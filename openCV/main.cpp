@@ -42,10 +42,23 @@ struct  RECTANGLE
 	float x,y,h,w;
 };
 
-void output_mat_as_file(char file_name[],Mat mat)
+void output_mat_as_txt_file(char file_name[],Mat mat)
 {
 	ofstream fout(file_name);
 	fout << mat;
+}
+
+void output_mat_as_csv_file(char file_name[],Mat mat)
+{
+	ofstream fout(file_name); 
+	for(int i=0;i<mat.rows;i++)
+	{
+		for(int j=0;j<mat.cols;j++)
+		{
+			fout << mat.at<float>(i,j) << ",";
+		}
+		fout << endl;
+	}
 }
 
 /**
@@ -180,6 +193,7 @@ float DistanceOfLontitudeAndLatitude(float lat1,float lat2,float lon1,float lon2
 Mat set_matrix(int attribute_title[],int time_title[],int attribute_title_size)
 {
 	Mat handle_mat(raw_data.size(),4, CV_32F);
+	Mat Gaussian_filter_mat(raw_data.size(),9, CV_32F);
 
 	//time data & hour data
 	int hour_index = time_title[1];
@@ -188,17 +202,39 @@ Mat set_matrix(int attribute_title[],int time_title[],int attribute_title_size)
 	int t = 0;
 	for(int i=0;i<time_step_amount;i++)
 	{
-		hour_data[i] = raw_data[t][hour_index];
+		hour_data[i] = raw_data[t][hour_index]; 
 		t += 600;
+	}
+	
+	//Apply Gaussian filter to raw data(0~8)
+	for(int i=0;i<raw_data.size();i++)
+	{
+		for(int j=0;j<9;j++)
+		{
+			Gaussian_filter_mat.at<float>(i,j) = raw_data[i][attribute_title[j]];
+		}
+	}
+
+	int MAX_KERNEL_LENGTH = 5;
+    for(int i=1;i<MAX_KERNEL_LENGTH;i=i+2)
+    { 
+		GaussianBlur( Gaussian_filter_mat, Gaussian_filter_mat, Size( i, i ), 0.5, 0.5 );
+          //if( display_dst( DELAY_BLUR ) != 0 ) { return 0; } 
 	}
 
 	//Compute norm
 	for(int i=0;i<raw_data.size();i++)
 	{
-		handle_mat.at<float>(i,0) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
-		handle_mat.at<float>(i,1) = norm_value(raw_data[i][attribute_title[3]],raw_data[i][attribute_title[4]],raw_data[i][attribute_title[5]]);
-		handle_mat.at<float>(i,2) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
+		handle_mat.at<float>(i,0) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
+		handle_mat.at<float>(i,1) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
+		handle_mat.at<float>(i,2) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
 	}
+	//for(int i=0;i<raw_data.size();i++)
+	//{
+	//	handle_mat.at<float>(i,0) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
+	//	handle_mat.at<float>(i,1) = norm_value(raw_data[i][attribute_title[3]],raw_data[i][attribute_title[4]],raw_data[i][attribute_title[5]]);
+	//	handle_mat.at<float>(i,2) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
+	//}
 
 	//Compute latitude & longitude
 	int lat_index = attribute_title[9];
@@ -219,6 +255,8 @@ Mat set_matrix(int attribute_title[],int time_title[],int attribute_title_size)
 		normalize(handle_mat.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
 	//cout << normalize_mat << endl;
 
+	output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
+
 	return normalize_mat;
 
 }
@@ -238,7 +276,6 @@ void voting(int k,Mat cluster_tag,int row_size)
 		}
 	}
 
-	//return histogram;
 }
 
 Mat Position_by_MDS(Mat cluster_centers,int k)
@@ -276,8 +313,8 @@ Mat Position_by_MDS(Mat cluster_centers,int k)
 						   .embedUsing(histo_coeff_EigenType);
 	Mat MDS_mat; //Type:double  
 	eigen2cv(output.embedding,MDS_mat);
-	normalize(MDS_mat.col(0),MDS_mat.col(0),0,1000,NORM_MINMAX);//normalize to 0~1000	
-	//MDS_mat = MDS_mat.mul(10);
+	normalize(MDS_mat.col(0),MDS_mat.col(0),1,1000,NORM_MINMAX);//normalize to 0~1000	
+	MDS_mat = MDS_mat.mul(5);
 
 	return MDS_mat;
 }
@@ -487,7 +524,7 @@ int main(int argc, char** argv)
 	clock_t end2 = clock();
 	printf("Setting matrix elapsed time: %f\n",double(end2 - begin2) / CLOCKS_PER_SEC);
 	//==================================================//
-	output_mat_as_file("model.txt",model);
+	output_mat_as_txt_file("model.txt",model);
     int k = 50; 
     Mat cluster_tag; //Tag:0~k-1
     int attempts = 2;//莱赣琌磅︽Ω计
@@ -499,7 +536,7 @@ int main(int argc, char** argv)
 	kmeans(model, k, cluster_tag,TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 0.0001), attempts,KMEANS_PP_CENTERS,cluster_centers);
 	clock_t end3 = clock();
     //TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 1),  硂柑Τ把计∕﹚k-means挡材把计琌程Ω计材把计琌弘絋ぶ材把计琌ㄌ酚玡ㄢ把计非絛ㄒい碞琌ㄢ常把酚 or よΑ∕﹚
-	printf("Kmeans elapsed time: %f\n",double(end3 - begin3) / CLOCKS_PER_SEC);
+	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	//==================================================//
 	
 	voting(k,cluster_tag,model.rows); // Type: int
@@ -508,16 +545,19 @@ int main(int argc, char** argv)
 	//===================PCA RGB=======================//
 	Mat components, result;
 	int rDim = 3;
+	clock_t begin4 = clock();
 	reduceDimPCA(cluster_centers, rDim, components, result);
+	clock_t end4 = clock();
+	printf("PCA RGB elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
 	rgb_mat = result.clone();
 	for(int i=0;i<result.cols;i++)
 		normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
-	output_mat_as_file("rgb_mat.txt",rgb_mat);
+	output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//===============Position (MDS)=====================//
-	clock_t begin4 = clock();
+	clock_t begin5 = clock();
 	position = Position_by_MDS(cluster_centers,k).clone(); //Type:double
-	clock_t end4 = clock();
-	printf("MDS Position elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
+	clock_t end5 = clock();
+	printf("MDS Position elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	cluster_centers.release();
 	//==================================================//
 
