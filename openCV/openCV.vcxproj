@@ -12,6 +12,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Preprocessing_Data.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Preprocessing_Data.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{CBD05309-7F57-4F03-A49A-AE59C2A4BA2B}</ProjectGuid>

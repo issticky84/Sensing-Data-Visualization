@@ -1,323 +1,341 @@
-#include "opencv2/imgproc/imgproc.hpp"
-#include "opencv2/highgui/highgui.hpp"
+//#include "opencv2/imgproc/imgproc.hpp"
+//#include "opencv2/highgui/highgui.hpp"
+#include "Preprocessing_Data.h"
 #include <stdio.h>
 #include <iostream>
-#include <highgui.h>
+//#include <highgui.h>
 #include <vector>
 #include <algorithm>
 #include <cmath>
 #include <ctime>
-#include "cv.h"
-#include <tapkee/tapkee.hpp>
-#include <tapkee/callbacks/dummy_callbacks.hpp>
-#include <opencv2/core/eigen.hpp> //cv2eigen
-#include <FTGL/ftgl.h>
-#include "glut.h"
 #include <fstream>
+//#include "cv.h"
+//#include <tapkee/tapkee.hpp>
+//#include <tapkee/callbacks/dummy_callbacks.hpp>
+//#include <opencv2/core/eigen.hpp> //cv2eigen
+//#include <FTGL/ftgl.h>
+#include "glut.h"
+#include <FTGL/ftgl.h>
 
-using namespace std; 
-using namespace cv;
-using namespace tapkee;
-using namespace Eigen;
+//#include "Preprocessing_Data.h"
+
+//using namespace std; 
+//using namespace cv;
+//using namespace tapkee;
+//using namespace Eigen;
 
 
 #define LENGTH 1000
 #define FONT_FILE "arial.ttf"
 FTPixmapFont font(FONT_FILE);
 
-char file_csv_data[] = "../../../../csv_data/BigData_20141121_0723_new.csv";
+//char file_csv_data[] = "../../../../csv_data/BigData_20141121_0723_new.csv";
 int windowSize[2];
 char quote[24][80];
 float scale_amount = 0.0;
 float x_amount=0.0,y_amount=0.0,z_amount=0.0;
 vector<float> draw_color(3);
-vector < vector<float> > raw_data;
-vector <int> hour_data;
-Mat histogram;//int
-Mat rgb_mat;//float
-Mat position;//double
+//vector < vector<float> > raw_data;
+//vector <int> hour_data;
+//Mat histogram;//int
+//Mat rgb_mat;//float
+//Mat position;//double
+
+Preprocessing_Data preprocessing_data;
 
 struct  RECTANGLE
 {
 	float x,y,h,w;
 };
 
-void output_mat_as_txt_file(char file_name[],Mat mat)
-{
-	ofstream fout(file_name);
-	fout << mat;
-}
-
-void output_mat_as_csv_file(char file_name[],Mat mat)
-{
-	ofstream fout(file_name); 
-	for(int i=0;i<mat.rows;i++)
-	{
-		for(int j=0;j<mat.cols;j++)
-		{
-			fout << mat.at<float>(i,j) << ",";
-		}
-		fout << endl;
-	}
-}
-
-/**
- * 從data計算平均與covariance matrix
- * http://en.wikipedia.org/wiki/Covariance_matrix#Definition
- *
- */
-void calcCovMat(Mat& data, Mat& mean, Mat& cov){
-    // 初始化
-	cov = Mat::zeros(data.cols, data.cols, CV_32F);
-
-	// 計算資料點的重心(平均)
-	mean = Mat::zeros(1, data.cols, CV_32F);
-	for (int i = 0; i < data.rows; i++){
-		mean += data.row(i);
-	}
-	mean /= double(data.rows);
-
-	// 計算covariance matrix
-	for (int i = 0; i < data.rows; i++){
-		cov += (data.row(i) - mean).t() * (data.row(i) - mean);
-	}
-	cov /= double(data.rows);
-}
-
-
-
-/**
- * 用Principal Component Analysis (PCA) 做降維
- *
- */
-void reduceDimPCA(Mat& data, int rDim, Mat& components, Mat& result){
-	// 計算covariance matrix
-	Mat cov, mean;
-	calcCovMat(data, mean, cov);
-
-	// 從covariance matrix計算eigenvectors
-	// http://docs.opencv.org/modules/core/doc/operations_on_arrays.html?highlight=pca#eigen
-	Mat eigenVal, eigenVec;
-	eigen(cov, eigenVal, eigenVec);
-
-	// 記錄前rDim個principal components
-	components = Mat(rDim, data.cols, CV_32F);
-	for (int i = 0; i < rDim; i++){
-		// http://docs.opencv.org/modules/core/doc/basic_structures.html?highlight=mat%20row#mat-row
-		eigenVec.row(i).copyTo(components.row(i));
-
-		// http://docs.opencv.org/modules/core/doc/operations_on_arrays.html?highlight=normalize#normalize
-		normalize(components.row(i), components.row(i));
-	}
-
-	// 計算結果
-	result = Mat(data.rows, rDim, CV_32F);
-	for (int i = 0; i < data.rows; i++){
-		for (int j = 0; j < rDim; j++){
-			// 內積(投影到principal component上)
-			// http://docs.opencv.org/modules/core/doc/basic_structures.html?highlight=dot#mat-dot
-			result.at<float>(i, j) = (data.row(i) - mean).dot(components.row(j));
-		}
-	}
-}
-
-void read_raw_data()
-{
-	FILE *csv_file;
-	csv_file = fopen(file_csv_data,"r");
-	if(!csv_file) 
-	{
-		cout << "Can't open config file!" << endl;
-		exit(1);
-	}
-
-	char line[LENGTH];
-	char *token;
-	int i,j;
-	i = j = 0;
-	fgets(line,LENGTH,csv_file); //ignore sep=
-	fgets(line,LENGTH,csv_file); //ignore title
-
-	while(!feof(csv_file))
-	{
-		fgets(line,LENGTH,csv_file);
-		//token = strtok(line,";");
-		token = strtok(line,";");
-		raw_data.push_back(vector<float> (1));
-		//printf("%s ",token);
-		while(token!=NULL)
-		{
-			raw_data.back().push_back(atof(token));
-			//token = strtok(NULL," ;:");
-			token = strtok(NULL," ;:/");
-		}
-	}
-
-	//cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
-	//29:Year,30:Hour,31:Minute,32:second,33:millisecond
-
-	cout << "Csv Data Size: " << raw_data.size() <<endl;
-	//cout << raw_data[0].size() << endl;
-
-	fclose(csv_file);
-}
-
-float degtorad(float deg)
-{
-	float rad = deg *3.14159265 / 180;
-	return rad;
-}
-
-float norm_value(float v1,float v2,float v3)
-{
-	return sqrt(v1*v1 + v2*v2 + v3*v3);
-}
-
-float DistanceOfLontitudeAndLatitude(float lat1,float lat2,float lon1,float lon2)
-{
-	float R = 6371; //km
-	float theta1 = degtorad(lat1);
-	float theta2 = degtorad(lat2);
-	float delta_theta = degtorad(lat2-lat1);
-	float delta_lumda = degtorad(lon2-lon1);
-	float a = sin(delta_theta/2) * sin(delta_theta/2) + cos(theta1) * cos(theta2) * sin(delta_lumda/2) * sin(delta_lumda/2);
-	float c = 2 * atan2((double)sqrt(a),(double)sqrt(1.0-a));
-	float d = R * c;
-
-	if(d>1.0) 
-		return 0.01;
-	else 
-		return d;
-}
-
-Mat set_matrix(int attribute_title[],int time_title[],int attribute_title_size)
-{
-	Mat handle_mat(raw_data.size(),4, CV_32F);
-	Mat Gaussian_filter_mat(raw_data.size(),9, CV_32F);
-
-	//time data & hour data
-	int hour_index = time_title[1];
-	int time_step_amount = floor(raw_data.size()/600.0);
-	hour_data.resize(time_step_amount);
-	int t = 0;
-	for(int i=0;i<time_step_amount;i++)
-	{
-		hour_data[i] = raw_data[t][hour_index]; 
-		t += 600;
-	}
-	
-	//Apply Gaussian filter to raw data(0~8)
-	for(int i=0;i<raw_data.size();i++)
-	{
-		for(int j=0;j<9;j++)
-		{
-			Gaussian_filter_mat.at<float>(i,j) = raw_data[i][attribute_title[j]];
-		}
-	}
-
-	int MAX_KERNEL_LENGTH = 5;
-    for(int i=1;i<MAX_KERNEL_LENGTH;i=i+2)
-    { 
-		GaussianBlur( Gaussian_filter_mat, Gaussian_filter_mat, Size( i, i ), 0.5, 0.5 );
-          //if( display_dst( DELAY_BLUR ) != 0 ) { return 0; } 
-	}
-
-	//Compute norm
-	for(int i=0;i<raw_data.size();i++)
-	{
-		handle_mat.at<float>(i,0) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
-		handle_mat.at<float>(i,1) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
-		handle_mat.at<float>(i,2) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
-	}
-	//for(int i=0;i<raw_data.size();i++)
-	//{
-	//	handle_mat.at<float>(i,0) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
-	//	handle_mat.at<float>(i,1) = norm_value(raw_data[i][attribute_title[3]],raw_data[i][attribute_title[4]],raw_data[i][attribute_title[5]]);
-	//	handle_mat.at<float>(i,2) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
-	//}
-
-	//Compute latitude & longitude
-	int lat_index = attribute_title[9];
-	int lon_index = attribute_title[10];
-	for(int i=0;i<raw_data.size();i++)
-	{
-		if(i==0)
-			handle_mat.at<float>(i,3) = 0.0;
-		else
-		{
-			handle_mat.at<float>(i,3) = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
-		}
-	}
-
-	//cout << handle_mat << endl;
-	Mat normalize_mat = handle_mat;
-	for(int i=0;i<handle_mat.cols;i++)
-		normalize(handle_mat.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
-	//cout << normalize_mat << endl;
-
-	output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
-
-	return normalize_mat;
-
-}
-
-void voting(int k,Mat cluster_tag,int row_size)
-{
-	int time_step_amount = floor(row_size/600.0);
-	histogram = Mat::zeros(time_step_amount,k,CV_32S);
-	int t = 1;
-	for(int i=0;i<time_step_amount;i++)
-	{
-		for(int j=0;j<600;j++)
-		{
-			int index = cluster_tag.at<int>(t,0);
-			histogram.at<int>(i,index)++;
-			t++;
-		}
-	}
-
-}
-
-Mat Position_by_MDS(Mat cluster_centers,int k)
-{
-	Mat cluster_centers_distance_mat = Mat::zeros(k,k, CV_32F);
-	for(int i=0;i<k;i++)
-	{
-		for(int j=0;j<k;j++)
-		{
-			if(i!=j)
-			{
-				cluster_centers_distance_mat.at<float>(i,j) = norm(cluster_centers.row(i),cluster_centers.row(j)); 
-			}
-		}
-	}
-	Mat wi; //1xk
-	reduce(cluster_centers_distance_mat,wi,0,CV_REDUCE_SUM); //kxk->1xk
-	Mat total_distance_mat; //1x1
-	reduce(wi,total_distance_mat,1,CV_REDUCE_SUM);//kx1->1x1
-	float total_distance_of_cluster_centers = total_distance_mat.at<float>(0,0);
-	wi = wi.mul(1.0/total_distance_of_cluster_centers);
-
-	int time_step_amount = histogram.rows;
-	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
-	for(int i=0;i<time_step_amount;i++)
-		for(int j=0;j<time_step_amount;j++)
-			for(int t=0;t<k;t++)
-			{
-				histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
-			}
-	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
-	cv2eigen(histo_coeff,histo_coeff_EigenType);
-	TapkeeOutput output = tapkee::initialize() 
-						   .withParameters((method=MultidimensionalScaling,target_dimension=1))
-						   .embedUsing(histo_coeff_EigenType);
-	Mat MDS_mat; //Type:double  
-	eigen2cv(output.embedding,MDS_mat);
-	normalize(MDS_mat.col(0),MDS_mat.col(0),1,1000,NORM_MINMAX);//normalize to 0~1000	
-	MDS_mat = MDS_mat.mul(5);
-
-	return MDS_mat;
-}
+//void output_mat_as_txt_file(char file_name[],Mat mat)
+//{
+//	ofstream fout(file_name);
+//	fout << mat;
+//}
+//
+//void output_mat_as_csv_file(char file_name[],Mat mat)
+//{
+//	ofstream fout(file_name); 
+//	for(int i=0;i<mat.rows;i++)
+//	{
+//		for(int j=0;j<mat.cols;j++)
+//		{
+//			fout << mat.at<float>(i,j) << ",";
+//		}
+//		fout << endl;
+//	}
+//}            
+//
+///**
+// * 從data計算平均與covariance matrix
+// * http://en.wikipedia.org/wiki/Covariance_matrix#Definition
+// *
+// */
+//void calcCovMat(Mat& data, Mat& mean, Mat& cov){
+//    // 初始化
+//	cov = Mat::zeros(data.cols, data.cols, CV_32F);
+//
+//	// 計算資料點的重心(平均)
+//	mean = Mat::zeros(1, data.cols, CV_32F);
+//	for (int i = 0; i < data.rows; i++){
+//		mean += data.row(i);
+//	}
+//	mean /= double(data.rows);
+//
+//	// 計算covariance matrix
+//	for (int i = 0; i < data.rows; i++){
+//		cov += (data.row(i) - mean).t() * (data.row(i) - mean);
+//	}
+//	cov /= double(data.rows);
+//}
+//
+//
+//
+///**
+// * 用Principal Component Analysis (PCA) 做降維
+// *
+// */
+//void reduceDimPCA(Mat& data, int rDim, Mat& components, Mat& result){
+//	// 計算covariance matrix
+//	Mat cov, mean;
+//	calcCovMat(data, mean, cov);
+//
+//	// 從covariance matrix計算eigenvectors
+//	// http://docs.opencv.org/modules/core/doc/operations_on_arrays.html?highlight=pca#eigen
+//	Mat eigenVal, eigenVec;
+//	eigen(cov, eigenVal, eigenVec);
+//
+//	// 記錄前rDim個principal components
+//	components = Mat(rDim, data.cols, CV_32F);
+//	for (int i = 0; i < rDim; i++){
+//		// http://docs.opencv.org/modules/core/doc/basic_structures.html?highlight=mat%20row#mat-row
+//		eigenVec.row(i).copyTo(components.row(i));
+//
+//		// http://docs.opencv.org/modules/core/doc/operations_on_arrays.html?highlight=normalize#normalize
+//		normalize(components.row(i), components.row(i));
+//	}
+//
+//	// 計算結果
+//	result = Mat(data.rows, rDim, CV_32F);
+//	for (int i = 0; i < data.rows; i++){
+//		for (int j = 0; j < rDim; j++){
+//			// 內積(投影到principal component上)
+//			// http://docs.opencv.org/modules/core/doc/basic_structures.html?highlight=dot#mat-dot
+//			result.at<float>(i, j) = (data.row(i) - mean).dot(components.row(j));
+//		}
+//	}
+//}
+//
+//void read_raw_data()
+//{
+//	FILE *csv_file;
+//	csv_file = fopen(file_csv_data,"r");
+//	if(!csv_file) 
+//	{
+//		cout << "Can't open config file!" << endl;
+//		exit(1);
+//	}
+//
+//	char line[LENGTH];
+//	char *token;
+//	int i,j;
+//	i = j = 0;
+//	fgets(line,LENGTH,csv_file); //ignore sep=
+//	fgets(line,LENGTH,csv_file); //ignore title
+//
+//	while(!feof(csv_file))
+//	{
+//		fgets(line,LENGTH,csv_file);
+//		//token = strtok(line,";");
+//		token = strtok(line,";");
+//		raw_data.push_back(vector<float> (1));
+//		//printf("%s ",token);
+//		while(token!=NULL)
+//		{
+//			raw_data.back().push_back(atof(token));
+//			//token = strtok(NULL," ;:");
+//			token = strtok(NULL," ;:/");
+//		}
+//	}
+//
+//	//cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
+//	//29:Year,30:Hour,31:Minute,32:second,33:millisecond
+//
+//	cout << "Csv Data Size: " << raw_data.size() <<endl;
+//	//cout << raw_data[0].size() << endl;
+//
+//	fclose(csv_file);
+//}
+//
+//float degtorad(float deg)
+//{
+//	float rad = deg *3.14159265 / 180;
+//	return rad;
+//}
+//
+//float norm_value(float v1,float v2,float v3)
+//{
+//	return sqrt(v1*v1 + v2*v2 + v3*v3);
+//}
+//
+//float DistanceOfLontitudeAndLatitude(float lat1,float lat2,float lon1,float lon2)
+//{
+//	float R = 6371; //km
+//	float theta1 = degtorad(lat1);
+//	float theta2 = degtorad(lat2);
+//	float delta_theta = degtorad(lat2-lat1);
+//	float delta_lumda = degtorad(lon2-lon1);
+//	float a = sin(delta_theta/2) * sin(delta_theta/2) + cos(theta1) * cos(theta2) * sin(delta_lumda/2) * sin(delta_lumda/2);
+//	float c = 2 * atan2((double)sqrt(a),(double)sqrt(1.0-a));
+//	float d = R * c;
+//
+//	if(d>1.0) 
+//		return 0.01;
+//	else 
+//		return d;
+//}
+//
+//void set_hour_data(int time_title[])
+//{
+//	int hour_index = time_title[1];
+//	int time_step_amount = floor(raw_data.size()/600.0);
+//	hour_data.resize(time_step_amount);
+//	int t = 0;
+//	for(int i=0;i<time_step_amount;i++)
+//	{
+//		hour_data[i] = raw_data[t][hour_index]; 
+//		t += 600;
+//	}	
+//}
+//
+//Mat Gaussian_filter(int attribute_title[],int MAX_KERNEL_LENGTH)
+//{
+//	Mat Gaussian_filter_mat(raw_data.size(),9, CV_32F);
+//
+//	//Apply Gaussian filter to raw data(0~8)
+//	for(int i=0;i<raw_data.size();i++)
+//	{
+//		for(int j=0;j<9;j++)
+//		{
+//			Gaussian_filter_mat.at<float>(i,j) = raw_data[i][attribute_title[j]];
+//		}
+//	}
+//
+//	//int MAX_KERNEL_LENGTH = 20;
+//    for(int i=1;i<MAX_KERNEL_LENGTH;i=i+2)
+//    { 
+//		GaussianBlur( Gaussian_filter_mat, Gaussian_filter_mat, Size( i, i ), 0.5, 0.5 );
+//	}
+//
+//	return Gaussian_filter_mat;
+//}
+//
+//Mat set_matrix(int attribute_title[],int attribute_title_size)
+//{
+//	Mat handle_mat(raw_data.size(),4, CV_32F);
+//
+//	Mat Gaussian_filter_mat = Gaussian_filter(attribute_title,20).clone();
+//
+//	//Compute norm
+//	for(int i=0;i<raw_data.size();i++)
+//	{
+//		handle_mat.at<float>(i,0) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
+//		handle_mat.at<float>(i,1) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
+//		handle_mat.at<float>(i,2) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
+//	}
+//	//for(int i=0;i<raw_data.size();i++)
+//	//{
+//	//	handle_mat.at<float>(i,0) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
+//	//	handle_mat.at<float>(i,1) = norm_value(raw_data[i][attribute_title[3]],raw_data[i][attribute_title[4]],raw_data[i][attribute_title[5]]);
+//	//	handle_mat.at<float>(i,2) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
+//	//}
+//
+//	//Compute latitude & longitude
+//	int lat_index = attribute_title[9];
+//	int lon_index = attribute_title[10];
+//	for(int i=0;i<raw_data.size();i++)
+//	{
+//		if(i==0)
+//			handle_mat.at<float>(i,3) = 0.0;
+//		else
+//		{
+//			handle_mat.at<float>(i,3) = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
+//		}
+//	}
+//
+//	//cout << handle_mat << endl;
+//	Mat normalize_mat = handle_mat;
+//	for(int i=0;i<handle_mat.cols;i++)
+//		normalize(handle_mat.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
+//	//cout << normalize_mat << endl;
+//
+//	output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
+//
+//	return normalize_mat;
+//
+//}
+//
+//void voting(int k,Mat cluster_tag,int row_size)
+//{
+//	int time_step_amount = floor(row_size/600.0);
+//	histogram = Mat::zeros(time_step_amount,k,CV_32S);
+//	int t = 1;
+//	for(int i=0;i<time_step_amount;i++)
+//	{
+//		for(int j=0;j<600;j++)
+//		{
+//			int index = cluster_tag.at<int>(t,0);
+//			histogram.at<int>(i,index)++;
+//			t++;
+//		}
+//	}
+//
+//}
+//
+//Mat Position_by_MDS(Mat cluster_centers,int k,float larger_weighting)
+//{
+//	Mat cluster_centers_distance_mat = Mat::zeros(k,k, CV_32F);
+//	for(int i=0;i<k;i++)
+//	{
+//		for(int j=0;j<k;j++)
+//		{
+//			if(i!=j)
+//			{
+//				cluster_centers_distance_mat.at<float>(i,j) = norm(cluster_centers.row(i),cluster_centers.row(j)); 
+//			}
+//		}
+//	}
+//	Mat wi; //1xk
+//	reduce(cluster_centers_distance_mat,wi,0,CV_REDUCE_SUM); //kxk->1xk
+//	Mat total_distance_mat; //1x1
+//	reduce(wi,total_distance_mat,1,CV_REDUCE_SUM);//kx1->1x1
+//	float total_distance_of_cluster_centers = total_distance_mat.at<float>(0,0);
+//	wi = wi.mul(1.0/total_distance_of_cluster_centers);
+//	wi *= larger_weighting;
+//
+//	int time_step_amount = histogram.rows;
+//	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
+//	for(int i=0;i<time_step_amount;i++)
+//		for(int j=0;j<time_step_amount;j++)
+//			for(int t=0;t<k;t++)
+//			{
+//				histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
+//			}
+//	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
+//	cv2eigen(histo_coeff,histo_coeff_EigenType);
+//	TapkeeOutput output = tapkee::initialize() 
+//						   .withParameters((method=MultidimensionalScaling,target_dimension=1))
+//						   .embedUsing(histo_coeff_EigenType);
+//	Mat MDS_mat; //Type:double  
+//	eigen2cv(output.embedding,MDS_mat);
+//	normalize(MDS_mat.col(0),MDS_mat.col(0),1,100,NORM_MINMAX);//normalize to 1~1000	
+//	output_mat_as_txt_file("normalized_MDS_mat.txt",MDS_mat);
+//	MDS_mat = MDS_mat.mul(20);
+//	output_mat_as_txt_file("normalized_MDS_mat_2.txt",MDS_mat);
+//
+//	return MDS_mat;
+//}
 
 int move_state = 0;
 int old_x,old_y;
@@ -439,17 +457,20 @@ void display()
 	glTranslatef(0.0+x_amount,0.0+y_amount,0.0+z_amount);
 	glScalef(0.6+scale_amount,0.6+scale_amount,0.6+scale_amount);
 
+	
 	int y_coord = 1400;
 	int pixels;
 	int current_hour;
 	int last_hour = -1;
 	int t=0;
-	for(int i=0;i<position.rows;++i)
+	for(int i=0;i<preprocessing_data.histogram.rows;++i)
 	{
-		current_hour = hour_data[i];
+		current_hour = preprocessing_data.hour_data[i];
 		if(current_hour!=last_hour)
 		{
-			draw_color[0] = 1; draw_color[1] = 1; draw_color[2] = 1;
+			draw_color[0] = 1; 
+			draw_color[1] = 1; 
+			draw_color[2] = 1;
 			RECTANGLE *line;
 			line = new RECTANGLE();
 			line->h = 3;
@@ -464,19 +485,21 @@ void display()
 		}		
 
 		int start = 0;
-		for(int k=0;k<histogram.cols;++k)
+		for(int k=0;k<preprocessing_data.histogram.cols;++k)
 		{   
-			if(histogram.at<int>(i,k)!=0)
+			if(preprocessing_data.histogram.at<int>(i,k)!=0)
 			{
-				pixels = histogram.at<int>(i,k);
-				draw_color[0] = rgb_mat.at<float>(k,0); draw_color[1] = rgb_mat.at<float>(k,1); draw_color[2] = rgb_mat.at<float>(k,2);
+				pixels = preprocessing_data.histogram.at<int>(i,k);
+				draw_color[0] = preprocessing_data.rgb_mat.at<float>(k,0); 
+				draw_color[1] = preprocessing_data.rgb_mat.at<float>(k,1); 
+				draw_color[2] = preprocessing_data.rgb_mat.at<float>(k,2);
 				for(int u=start;u<start+pixels;++u)
 				{
 					RECTANGLE *rect;
 					rect = new RECTANGLE();
 					rect->h = 3;
 					rect->w = 0.1;
-					rect->x = 110 + position.at<double>(i,1)/10.0 + (double)u*0.1;
+					rect->x = 110 + preprocessing_data.position.at<double>(i,1)/10.0 + (double)u*0.1;
 					rect->y = y_coord;
 					DrawRectWithOpenGL(rect);	
 					delete(rect);
@@ -489,7 +512,7 @@ void display()
 
 		last_hour = current_hour;
 	}
-
+	
 	glutSwapBuffers(); // Swap front and back buffers
 	
 } 
@@ -507,6 +530,7 @@ int main(int argc, char** argv)
 	//glutMouseFunc(mouse);
 	//glutMotionFunc(motion);
 
+	/*
 	//=================Read CSV file====================//
 	clock_t begin = clock();
 	read_raw_data();
@@ -520,7 +544,8 @@ int main(int argc, char** argv)
 	
 	//============Setting matrix for K-means============//
 	clock_t begin2 = clock();
-	Mat model = set_matrix(attribute_title,time_title,attribute_title_size).clone();
+	set_hour_data(time_title);
+	Mat model = set_matrix(attribute_title,attribute_title_size).clone();
 	clock_t end2 = clock();
 	printf("Setting matrix elapsed time: %f\n",double(end2 - begin2) / CLOCKS_PER_SEC);
 	//==================================================//
@@ -555,15 +580,17 @@ int main(int argc, char** argv)
 	output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//===============Position (MDS)=====================//
 	clock_t begin5 = clock();
-	position = Position_by_MDS(cluster_centers,k).clone(); //Type:double
+	position = Position_by_MDS(cluster_centers,k,20).clone(); //Type:double
 	clock_t end5 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	cluster_centers.release();
 	//==================================================//
-
+	*/
 	time_string();
 
-	raw_data.clear();
+	//raw_data.clear();
+
+	preprocessing_data.start();
 
 	glutMainLoop();
 
