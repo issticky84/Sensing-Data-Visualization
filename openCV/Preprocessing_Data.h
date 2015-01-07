@@ -23,6 +23,7 @@ class Preprocessing_Data
 private:
 	char file_csv_data[200];
 	vector < vector<float> > raw_data;
+	vector < vector<float> > lab_vertices;
 
 	void output_mat_as_txt_file(char file_name[],Mat);
 	void output_mat_as_csv_file(char file_name[],Mat);
@@ -37,6 +38,10 @@ private:
 	Mat set_matrix(int attribute_title[],int);
 	void voting(int,Mat,int);
 	Mat Position_by_MDS(Mat,int ,float);
+	Mat lab_alignment(Mat);
+	void read_lab_csv();
+	bool lab_boundary_test(float,float,float);
+	Mat LAB2RGB(Mat);
 public:
 	void start();
 
@@ -44,6 +49,7 @@ public:
 	Mat histogram;//int
 	Mat rgb_mat;//float
 	Mat position;//double
+	Mat raw_data_3D;//float
 };
 
 
