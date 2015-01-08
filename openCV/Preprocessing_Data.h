@@ -42,6 +42,8 @@ private:
 	void read_lab_csv();
 	bool lab_boundary_test(float,float,float);
 	Mat LAB2RGB(Mat);
+	Mat compute_centroid(Mat);
+	void mrdivide(const Mat &, const Mat &, Mat &);
 public:
 	void start();
 
