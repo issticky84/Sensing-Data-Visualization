@@ -50,6 +50,7 @@ public:
 	vector <int> hour_data;
 	Mat histogram;//int
 	Mat rgb_mat;//float
+	Mat rgb_mat2;//float
 	Mat position;//double
 	Mat raw_data_3D;//float
 };

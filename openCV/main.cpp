@@ -490,9 +490,9 @@ void display()
 			if(preprocessing_data.histogram.at<int>(i,k)!=0)
 			{
 				pixels = preprocessing_data.histogram.at<int>(i,k);
-				draw_color[0] = preprocessing_data.rgb_mat.at<float>(k,0); 
-				draw_color[1] = preprocessing_data.rgb_mat.at<float>(k,1); 
-				draw_color[2] = preprocessing_data.rgb_mat.at<float>(k,2);
+				draw_color[0] = preprocessing_data.rgb_mat2.at<float>(k,0); 
+				draw_color[1] = preprocessing_data.rgb_mat2.at<float>(k,1); 
+				draw_color[2] = preprocessing_data.rgb_mat2.at<float>(k,2);
 				for(int u=start;u<start+pixels;++u)
 				{
 					RECTANGLE *rect;

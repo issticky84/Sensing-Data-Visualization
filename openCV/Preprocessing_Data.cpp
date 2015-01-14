@@ -16,7 +16,7 @@ void Preprocessing_Data::start()
 	
 	//=================Read CSV file====================//
 	clock_t begin = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20150105_1958_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
 	read_raw_data(); 
 	clock_t end = clock();
 	printf("Read csv elapsed time: %f\n",double(end - begin) / CLOCKS_PER_SEC);
@@ -34,7 +34,7 @@ void Preprocessing_Data::start()
 	printf("Setting matrix elapsed time: %f\n",double(end2 - begin2) / CLOCKS_PER_SEC);
 	//==================================================//
 	output_mat_as_txt_file("model.txt",model);
-    int k = 50; 
+    int k = 25; 
     Mat cluster_tag; //Tag:0~k-1
     int attempts = 2;//應該是執行次數
 	Mat cluster_centers;
@@ -61,7 +61,7 @@ void Preprocessing_Data::start()
 		normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
 	output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//=================LAB alignment====================//
-	Mat rgb_mat2 = lab_alignment(cluster_centers);
+	rgb_mat2 = lab_alignment(cluster_centers);
 	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
 	//===============Position (MDS)=====================//
 	clock_t begin5 = clock();
@@ -160,6 +160,8 @@ void Preprocessing_Data::reduceDimPCA(Mat& data, int rDim, Mat& components, Mat&
 
 void Preprocessing_Data::read_raw_data()
 {
+	vector<string> title_name;
+
 	FILE *csv_file;
 	csv_file = fopen(file_csv_data,"r");
 	if(!csv_file) 
@@ -174,6 +176,15 @@ void Preprocessing_Data::read_raw_data()
 	i = j = 0;
 	fgets(line,LENGTH,csv_file); //ignore sep=
 	fgets(line,LENGTH,csv_file); //ignore title
+	
+	//token = strtok(line,";");
+	//while(token!=NULL)
+	//{
+	//	title_name.push_back(token);
+	//	token = strtok(NULL,";");
+	//}
+	//for(int i=0;i<title_name.size();i++) cout << title_name[i] << " ";
+	//cout << "title size: " << title_name.size() << endl;
 
 	while(!feof(csv_file))
 	{
@@ -304,17 +315,32 @@ Mat Preprocessing_Data::Gaussian_filter(int attribute_title[],int MAX_KERNEL_LEN
 
 Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_size)
 {
-	Mat handle_mat(raw_data.size(),4, CV_32F);
+	//Mat handle_mat(raw_data.size(),4, CV_32F);
+	Mat handle_mat;
 
 	Mat Gaussian_filter_mat = Gaussian_filter(attribute_title,20).clone();
 
+	Mat norm_gravity(1, raw_data.size(), CV_32F);
+	Mat norm_linear_acc(1, raw_data.size(), CV_32F);
+	Mat norm_gyro(1, raw_data.size(), CV_32F);
 	//Compute norm
 	for(int i=0;i<raw_data.size();i++)
 	{
-		handle_mat.at<float>(i,0) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
-		handle_mat.at<float>(i,1) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
-		handle_mat.at<float>(i,2) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
+		norm_gravity.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
+		norm_linear_acc.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
+		norm_gyro.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
 	}
+
+	handle_mat.push_back(norm_gravity);
+	handle_mat.push_back(norm_linear_acc);
+	handle_mat.push_back(norm_gyro);
+	//Compute norm
+	//for(int i=0;i<raw_data.size();i++)
+	//{
+	//	handle_mat.at<float>(i,0) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
+	//	handle_mat.at<float>(i,1) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
+	//	handle_mat.at<float>(i,2) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
+	//}
 	//for(int i=0;i<raw_data.size();i++)
 	//{
 	//	handle_mat.at<float>(i,0) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
@@ -325,21 +351,27 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 	//Compute latitude & longitude
 	int lat_index = attribute_title[9];
 	int lon_index = attribute_title[10];
+	Mat first_order_distance_mat(1, raw_data.size(), CV_32F);
 	for(int i=0;i<raw_data.size();i++)
 	{
 		if(i==0)
-			handle_mat.at<float>(i,3) = 0.0;
+			first_order_distance_mat.at<float>(0,i) = 0.0;
 		else
 		{
-			handle_mat.at<float>(i,3) = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
+			first_order_distance_mat.at<float>(0,i) = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
 		}
 	}
 
-	output_mat_as_csv_file("handle_mat.csv",handle_mat);
+	handle_mat.push_back(first_order_distance_mat);
+	Mat handle_mat2 = handle_mat.t();
+
+	//cout << handle_mat2.rows + " " + handle_mat2.cols << endl;
+
+	//output_mat_as_csv_file("handle_mat.csv",handle_mat2);
 	//cout << handle_mat << endl;
-	Mat normalize_mat = handle_mat;
-	for(int i=0;i<handle_mat.cols;i++)
-		normalize(handle_mat.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
+	Mat normalize_mat = handle_mat2;
+	for(int i=0;i<handle_mat2.cols;i++)
+		normalize(handle_mat2.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
 	//cout << normalize_mat << endl;
 
 	output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
@@ -367,7 +399,21 @@ void Preprocessing_Data::voting(int k,Mat cluster_tag,int row_size)
 
 Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_weighting)
 {
-	
+	//test
+	int time_step = floor(raw_data.size()/600.0);
+	Mat Ev = Mat::zeros(time_step,cluster_centers.cols,CV_32F);
+	for(int i=0;i<time_step;i++)
+	{
+		float base = 0;
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += histogram.at<int>(i,j)*cluster_centers.row(j);
+			base += histogram.at<int>(i,j);
+		}
+		Ev.row(i)/=base;
+	}
+	output_mat_as_txt_file("Ev.txt",Ev);
+	//
 	Mat cluster_centers_distance_mat = Mat::zeros(k,k, CV_32F);
 	for(int i=0;i<k;i++)
 	{
@@ -389,12 +435,20 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_w
 
 	int time_step_amount = histogram.rows;
 	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
+	//for(int i=0;i<time_step_amount;i++)
+	//	for(int j=0;j<time_step_amount;j++)
+	//		for(int t=0;t<k;t++)
+	//		{
+	//			histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
+	//		}
 	for(int i=0;i<time_step_amount;i++)
 		for(int j=0;j<time_step_amount;j++)
-			for(int t=0;t<k;t++)
+			for(int t=0;t<cluster_centers.cols;t++)
 			{
-				histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
+				histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
 			}
+	histo_coeff.mul(1000);
+	output_mat_as_txt_file("histo_coeff.txt",histo_coeff);
 	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
 	cv2eigen(histo_coeff,histo_coeff_EigenType);
 	TapkeeOutput output = tapkee::initialize() 
