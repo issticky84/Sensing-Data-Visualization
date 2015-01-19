@@ -39,12 +39,16 @@ private:
 	void voting(int,Mat,int);
 	Mat Position_by_MDS(Mat,int ,float);
 	Mat lab_alignment(Mat);
+	Mat lab_alignment_dim1(Mat);
+	Mat lab_alignment_dim2(Mat);
 	void read_lab_csv();
 	bool lab_boundary_test(float,float,float);
 	Mat LAB2RGB(Mat);
 	Mat compute_centroid(Mat);
 	void mrdivide(const Mat &, const Mat &, Mat &);
 public:
+	Preprocessing_Data();
+
 	void start();
 
 	vector <int> hour_data;
