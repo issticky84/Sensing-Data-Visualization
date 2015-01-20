@@ -1,4 +1,4 @@
-﻿已經開始建置於 2015/1/19 下午 08:17:10。
+﻿已經開始建置於 2015/1/20 下午 07:06:56。
      1>節點 2 (build 目標) 上的專案 "E:\GitHub\Sensing-Data-Visualization\openCV\openCV.vcxproj"。
      1>InitializeBuildStatus:
          由於指定了 "AlwaysCreate"，因此正在建立 "obj\Release\openCV.unsuccessfulbuild"。
@@ -23,18 +23,18 @@
      1>Preprocessing_Data.cpp(307): warning C4018: '<' : signed/unsigned 不相符
      1>Preprocessing_Data.cpp(335): warning C4018: '<' : signed/unsigned 不相符
      1>Preprocessing_Data.cpp(363): warning C4018: '<' : signed/unsigned 不相符
-     1>Preprocessing_Data.cpp(537): warning C4305: '+=' : 從 'double' 轉換為 'float'，是由較大的型別轉換為較小的型別，可能導致資料遺失
-     1>Preprocessing_Data.cpp(548): warning C4018: '<' : signed/unsigned 不相符
-     1>Preprocessing_Data.cpp(690): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+     1>Preprocessing_Data.cpp(542): warning C4305: '+=' : 從 'double' 轉換為 'float'，是由較大的型別轉換為較小的型別，可能導致資料遺失
+     1>Preprocessing_Data.cpp(553): warning C4018: '<' : signed/unsigned 不相符
+     1>Preprocessing_Data.cpp(686): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
                  C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\stdio.h(234) : 請參閱 'fopen' 的宣告
-     1>Preprocessing_Data.cpp(708): warning C4996: 'strtok': This function or variable may be unsafe. Consider using strtok_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+     1>Preprocessing_Data.cpp(704): warning C4996: 'strtok': This function or variable may be unsafe. Consider using strtok_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
                  C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\string.h(197) : 請參閱 'strtok' 的宣告
-     1>Preprocessing_Data.cpp(715): warning C4996: 'strtok': This function or variable may be unsafe. Consider using strtok_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+     1>Preprocessing_Data.cpp(711): warning C4996: 'strtok': This function or variable may be unsafe. Consider using strtok_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
                  C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include\string.h(197) : 請參閱 'strtok' 的宣告
-     1>Preprocessing_Data.cpp(781): warning C4305: '+=' : 從 'double' 轉換為 'float'，是由較大的型別轉換為較小的型別，可能導致資料遺失
-     1>Preprocessing_Data.cpp(792): warning C4018: '<' : signed/unsigned 不相符
-     1>Preprocessing_Data.cpp(941): warning C4305: '+=' : 從 'double' 轉換為 'float'，是由較大的型別轉換為較小的型別，可能導致資料遺失
-     1>Preprocessing_Data.cpp(952): warning C4018: '<' : signed/unsigned 不相符
+     1>Preprocessing_Data.cpp(777): warning C4305: '+=' : 從 'double' 轉換為 'float'，是由較大的型別轉換為較小的型別，可能導致資料遺失
+     1>Preprocessing_Data.cpp(788): warning C4018: '<' : signed/unsigned 不相符
+     1>Preprocessing_Data.cpp(937): warning C4305: '+=' : 從 'double' 轉換為 'float'，是由較大的型別轉換為較小的型別，可能導致資料遺失
+     1>Preprocessing_Data.cpp(948): warning C4018: '<' : signed/unsigned 不相符
        Link:
          C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"bin\Release\openCV.exe" /INCREMENTAL:NO /NOLOGO /LIBPATH:..\..\lib opencv_calib3d244.lib opencv_calib3d244d.lib opencv_contrib244.lib opencv_contrib244d.lib opencv_core244.lib opencv_core244d.lib opencv_features2d244.lib opencv_features2d244d.lib opencv_flann244.lib opencv_flann244d.lib opencv_gpu244.lib opencv_gpu244d.lib opencv_haartraining_engine.lib opencv_haartraining_engined.lib opencv_highgui244.lib opencv_highgui244d.lib opencv_imgproc244.lib opencv_imgproc244d.lib opencv_legacy244.lib opencv_legacy244d.lib opencv_ml244.lib opencv_ml244d.lib opencv_nonfree244.lib opencv_nonfree244d.lib opencv_objdetect244.lib opencv_objdetect244d.lib opencv_photo244.lib opencv_photo244d.lib opencv_stitching244.lib opencv_stitching244d.lib opencv_ts244.lib opencv_ts244d.lib opencv_video244.lib opencv_video244d.lib opencv_videostab244.lib opencv_videostab244d.lib freeglut.lib opengl32.lib glew32s.lib glew32.lib libglfw.a libopengl32.a freetype244MT_D.lib ftgl.lib ftgl_static.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /ManifestFile:"obj\Release\openCV.exe.intermediate.manifest" /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /DEBUG /PDB:"E:\GitHub\Sensing-Data-Visualization\openCV\bin\Release\openCV.pdb" /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /LTCG /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"bin\Release\openCV.lib" /MACHINE:X86 obj\Release\main.obj
          obj\Release\Preprocessing_Data.obj
@@ -50,4 +50,4 @@
 
 建置成功。
 
-經過時間 00:00:36.24
+經過時間 00:00:35.99

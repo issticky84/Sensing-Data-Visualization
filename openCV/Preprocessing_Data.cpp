@@ -66,9 +66,9 @@ void Preprocessing_Data::start()
 		normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
 	output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//=================LAB alignment====================//
-	//rgb_mat2 = lab_alignment(cluster_centers);
+	rgb_mat2 = lab_alignment(cluster_centers);
 	//rgb_mat2 = lab_alignment_dim1(cluster_centers);
-	rgb_mat2 = lab_alignment_dim2(cluster_centers);
+	//rgb_mat2 = lab_alignment_dim2(cluster_centers);
 	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
 	//===============Position (MDS)=====================//
 	clock_t begin5 = clock();
@@ -479,7 +479,6 @@ void Preprocessing_Data::mrdivide(const cv::Mat &A, const cv::Mat &b, cv::Mat &x
 
 Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 {
-	//read_lab_csv();
 	int vTotal = lab_vertices.size();
 	//Turn LAB vector into LAB mat
 	Mat lab_mat = Mat::zeros(vTotal,3,CV_32F);
@@ -503,34 +502,26 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 		}
 	}
 	Mat cluster_center_component,cluster_center_PCA;
+	Mat garbage;
 	int rDim = 3;
-	reduceDimPCA(cluster_center_alignment_mat, rDim, cluster_center_component, cluster_center_PCA);
+	reduceDimPCA(cluster_center_alignment_mat, rDim, cluster_center_component, cluster_center_PCA);//PCA 4dim->3dim (for dimension reduction)
+	reduceDimPCA(cluster_center_PCA, rDim, cluster_center_component, garbage); //PCA 3dim->3dim (for principal component)
+	cout << "cluster_center_component " << endl << cluster_center_component << endl;
 	//cluster center 3 axis of PCA
 	Mat cluster_center_axis = Mat::zeros(3,3,CV_32F);
-	for(int i=0;i<3;i++)
-	{
-		for(int j=0;j<3;j++)
-		{
-			cluster_center_axis.at<float>(i,j) = cluster_center_component.at<float>(j,i);
-		}
-	}
+	cluster_center_axis = cluster_center_component;
+
 	output_mat_as_csv_file("cluster_center_PCA.csv",cluster_center_PCA);
 	//compute centroid of LAB
 	Mat lab_centroid = compute_centroid(lab_mat);
-	
 	//lab vertices 3 axis of PCA
 	Mat lab_components,lab_PCA;
 	rDim = 3;
-	reduceDimPCA(lab_mat, rDim, lab_components, lab_PCA);
+	reduceDimPCA(lab_mat, rDim, lab_components, lab_PCA); //PCA 3dim->3dim (for principal component)
+	cout << "lab_components " << endl << lab_components << endl;
 	Mat lab_axis = Mat::zeros(3,3,CV_32F);
-	for(int i=0;i<3;i++)
-	{
-		for(int j=0;j<3;j++)
-		{
-			lab_axis.at<float>(i,j) = lab_components.at<float>(j,i);
-		}
-	}
-	
+	lab_axis = lab_components;
+
 	//////////////////////////////////////////////////////////////////
 	Mat cluster_center_PCA_const = cluster_center_PCA;
 	vector<float> move_vector;
@@ -558,14 +549,10 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 			Mat cluster_center_PCA_temp,cluster_center_PCA_weight,cluster_center_axis_invert;
 			add(cluster_center_PCA_const,move_vector[t],cluster_center_PCA_temp); //move
 			cluster_center_PCA_temp = cluster_center_PCA_temp.mul(mid); //scale
-			//cout << "inverse " << cluster_center_axis.inv() << endl;
 			cluster_center_axis_invert = cluster_center_axis.inv();
-			//cluster_center_axis_invert = cluster_center_axis_invert.mul(0.1);
 			cluster_center_PCA_weight = cluster_center_PCA_temp * cluster_center_axis_invert;
-			//cout << "cluster_center_PCA_weight " << cluster_center_PCA_weight << endl;
-			//cout << "cluster_center_axis_invert" << cluster_center_axis_invert << endl;
 			align_mat = cluster_center_PCA_weight*lab_axis;
-			//cout << "align_mat " << align_mat << endl;
+
 			//把重心平移回去
 			for(int i=0;i<align_mat.rows;i++)
 			{
@@ -574,8 +561,6 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 					align_mat.at<float>(i,j) += lab_centroid.at<float>(0,j);
 				}
 			}
-
-			//cout << "align_mat " << align_mat << endl;
 	
 			bool flag = true;
 			for(int i=0;i<align_mat.rows;i++)
@@ -630,11 +615,10 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 		}
 	}
 
-	output_mat_as_txt_file("max_align_mat.txt",max_align_mat);
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
-	Mat rgb_mat2 = LAB2RGB(max_align_mat).clone();
+	Mat rgb_mat = LAB2RGB(max_align_mat).clone();
 
-	return rgb_mat2;
+	return rgb_mat;
 }
 
 Mat Preprocessing_Data::compute_centroid(Mat input_mat)
@@ -655,14 +639,12 @@ Mat Preprocessing_Data::compute_centroid(Mat input_mat)
 
 bool Preprocessing_Data::lab_boundary_test(float p1,float p2,float p3)
 {
-	//cout << p1 << " " << p2 << " " << p3 << endl;
 	bool test = true;
 	Mat lab_color(1, 1, CV_32FC3);
 	Mat rgb_color(1, 1, CV_32FC3);
 	lab_color.at<Vec3f>(0, 0) = Vec3f(p1, p2, p3);
 	cvtColor(lab_color, rgb_color, CV_Lab2BGR);
 	cvtColor(rgb_color, lab_color, CV_BGR2Lab);
-	//cout << lab_color.at<Vec3f>(0,0).val[0] << " " << lab_color.at<Vec3f>(0,0).val[1] << " " << lab_color.at<Vec3f>(0,0).val[2] << endl << endl;
 	if(abs(lab_color.at<Vec3f>(0,0).val[0] - p1) > 1.0 || abs(lab_color.at<Vec3f>(0,0).val[1] - p2) > 1.0 || abs(lab_color.at<Vec3f>(0,0).val[2] - p3) > 1.0)
 		test = false;
 	return test;
@@ -753,14 +735,7 @@ Mat Preprocessing_Data::lab_alignment_dim1(Mat cluster_center)
 	//cluster center 3 axis of PCA
 	Mat cluster_center_axis = Mat::zeros(1,1,CV_32F);
 	cluster_center_axis.at<float>(0,0) = cluster_center_component.at<float>(0,0);
-	//for(int i=0;i<3;i++)
-	//{
-	//	for(int j=0;j<3;j++)
-	//	{
-	//		cluster_center_axis.at<float>(i,j) = cluster_center_component.at<float>(j,i);
-	//	}
-	//}
-	output_mat_as_csv_file("cluster_center_PCA.csv",cluster_center_PCA);
+
 	//compute centroid of LAB
 	Mat lab_centroid = compute_centroid(lab_mat);
 	
@@ -770,9 +745,9 @@ Mat Preprocessing_Data::lab_alignment_dim1(Mat cluster_center)
 	reduceDimPCA(lab_mat, rDim, lab_components, lab_PCA);
 	Mat lab_axis = Mat::zeros(1,3,CV_32F);
 	cout << lab_components << endl;
-	for(int i=0;i<3;i++)
+	for(int j=0;j<3;j++)
 	{
-		lab_axis.at<float>(0,i) = lab_components.at<float>(0,i);
+		lab_axis.at<float>(0,j) = lab_components.at<float>(0,j);
 	}
 	
 	//////////////////////////////////////////////////////////////////
@@ -802,14 +777,10 @@ Mat Preprocessing_Data::lab_alignment_dim1(Mat cluster_center)
 			Mat cluster_center_PCA_temp,cluster_center_PCA_weight,cluster_center_axis_invert;
 			add(cluster_center_PCA_const,move_vector[t],cluster_center_PCA_temp); //move
 			cluster_center_PCA_temp = cluster_center_PCA_temp.mul(mid); //scale
-			//cout << "inverse " << cluster_center_axis.inv() << endl;
 			cluster_center_axis_invert = cluster_center_axis.inv();
-			//cluster_center_axis_invert = cluster_center_axis_invert.mul(0.1);
 			cluster_center_PCA_weight = cluster_center_PCA_temp * cluster_center_axis_invert;
-			//cout << "cluster_center_PCA_weight " << cluster_center_PCA_weight << endl;
-			//cout << "cluster_center_axis_invert" << cluster_center_axis_invert << endl;
 			align_mat = cluster_center_PCA_weight*lab_axis;
-			//cout << "align_mat " << align_mat << endl;
+
 			//把重心平移回去
 			for(int i=0;i<align_mat.rows;i++)
 			{
@@ -874,7 +845,6 @@ Mat Preprocessing_Data::lab_alignment_dim1(Mat cluster_center)
 		}
 	}
 
-	output_mat_as_txt_file("max_align_mat.txt",max_align_mat);
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
 	Mat rgb_mat2 = LAB2RGB(max_align_mat).clone();
 
@@ -915,10 +885,10 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 	{
 		for(int j=0;j<2;j++)
 		{
-			cluster_center_axis.at<float>(i,j) = cluster_center_component.at<float>(j,i);
+			cluster_center_axis.at<float>(i,j) = cluster_center_component.at<float>(i,j);
 		}
 	}
-	output_mat_as_csv_file("cluster_center_PCA.csv",cluster_center_PCA);
+
 	//compute centroid of LAB
 	Mat lab_centroid = compute_centroid(lab_mat);
 	
@@ -962,14 +932,11 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 			Mat cluster_center_PCA_temp,cluster_center_PCA_weight,cluster_center_axis_invert;
 			add(cluster_center_PCA_const,move_vector[t],cluster_center_PCA_temp); //move
 			cluster_center_PCA_temp = cluster_center_PCA_temp.mul(mid); //scale
-			//cout << "inverse " << cluster_center_axis.inv() << endl;
 			cluster_center_axis_invert = cluster_center_axis.inv();
-			//cluster_center_axis_invert = cluster_center_axis_invert.mul(0.1);
 			cluster_center_PCA_weight = cluster_center_PCA_temp * cluster_center_axis_invert;
-			//cout << "cluster_center_PCA_weight " << cluster_center_PCA_weight << endl;
-			//cout << "cluster_center_axis_invert" << cluster_center_axis_invert << endl;
+
 			align_mat = cluster_center_PCA_weight*lab_axis;
-			//cout << "align_mat " << align_mat << endl;
+
 			//把重心平移回去
 			for(int i=0;i<align_mat.rows;i++)
 			{
@@ -979,7 +946,6 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 				}
 			}
 
-			//cout << "align_mat " << align_mat << endl;
 	
 			bool flag = true;
 			for(int i=0;i<align_mat.rows;i++)
@@ -1034,7 +1000,6 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 		}
 	}
 
-	output_mat_as_txt_file("max_align_mat.txt",max_align_mat);
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
 	Mat rgb_mat2 = LAB2RGB(max_align_mat).clone();
 
