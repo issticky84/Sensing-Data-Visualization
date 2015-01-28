@@ -21,7 +21,7 @@ void Preprocessing_Data::start()
 	
 	//=================Read CSV file====================//
 	clock_t begin = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_2315_new.csv");
 	read_raw_data(); 
 	clock_t end = clock();
 	printf("Read csv elapsed time: %f\n",double(end - begin) / CLOCKS_PER_SEC);
@@ -38,7 +38,7 @@ void Preprocessing_Data::start()
 	clock_t end2 = clock();
 	printf("Setting matrix elapsed time: %f\n",double(end2 - begin2) / CLOCKS_PER_SEC);
 	//==================================================//
-	output_mat_as_txt_file("model.txt",model);
+	output_mat_as_csv_file("model.csv",model);
     int k = 25; 
     Mat cluster_tag; //Tag:0~k-1
     int attempts = 2;//莱赣琌磅︽Ω计
@@ -46,29 +46,30 @@ void Preprocessing_Data::start()
 	//==============K means clustering==================//
 	//ㄏノk meansだ竤
 	clock_t begin3 = clock();
-	kmeans(model, k, cluster_tag,TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 0.0001), attempts,KMEANS_PP_CENTERS,cluster_centers);
+	kmeans(model, k, cluster_tag,TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), attempts,KMEANS_PP_CENTERS,cluster_centers);
 	clock_t end3 = clock();
     //TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 1),  硂柑Τ把计∕﹚k-means挡材把计琌程Ω计材把计琌弘絋ぶ材把计琌ㄌ酚玡ㄢ把计非絛ㄒい碞琌ㄢ常把酚 or よΑ∕﹚
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	//==================================================//
 	output_mat_as_csv_file("cluster_center.csv",cluster_centers);
 	voting(k,cluster_tag,model.rows); // Type: int
+	output_mat_as_csv_file_int("cluster_tag.csv",cluster_tag);
 	cluster_tag.release();
 	//===================PCA RGB=======================//
 	Mat components, result;
 	int rDim = 3;
-	clock_t begin4 = clock();
-	reduceDimPCA(cluster_centers, rDim, components, result);
-	clock_t end4 = clock();
-	printf("PCA RGB elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
-	rgb_mat = result.clone();
-	for(int i=0;i<result.cols;i++)
-		normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
-	output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
+	//clock_t begin4 = clock();
+	//reduceDimPCA(cluster_centers, rDim, components, result);
+	//clock_t end4 = clock();
+	//printf("PCA RGB elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
+	//rgb_mat = result.clone();
+	//for(int i=0;i<result.cols;i++)
+	//	normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
+	//output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//=================LAB alignment====================//
-	rgb_mat2 = lab_alignment(cluster_centers);
-	//rgb_mat2 = lab_alignment_dim1(cluster_centers);
-	//rgb_mat2 = lab_alignment_dim2(cluster_centers);
+	if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment(cluster_centers);
+	else if(cluster_centers.cols==1) rgb_mat2 = lab_alignment_dim1(cluster_centers);
+	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
 	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
 	//===============Position (MDS)=====================//
 	clock_t begin5 = clock();
@@ -77,12 +78,24 @@ void Preprocessing_Data::start()
 	printf("MDS Position elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	cluster_centers.release();
 	//===================PCA raw data 3 dim=======================//
+	rDim = 1;
 	reduceDimPCA(model, rDim, components, result);
-	raw_data_3D = result.clone();
-	for(int i=0;i<result.cols;i++)
-		normalize(result.col(i),raw_data_3D.col(i),0,1,NORM_MINMAX); //normalize to 0-1
+	normalize(result.col(0),result.col(0),0,1,NORM_MINMAX); //normalize to 0-1
+	Mat raw_data_3D = Mat::zeros(result.rows,3,CV_32F);
+	for(int i=0;i<result.rows;i++)
+	{
+		float r,g,b;
+		gray2rgb(result.at<float>(i,0),r,g,b);
+		raw_data_3D.at<float>(i,0) = r;
+		raw_data_3D.at<float>(i,1) = g;
+		raw_data_3D.at<float>(i,2) = b;
+	}
+	output_mat_as_txt_file("raw_data_3D.txt",raw_data_3D);
+	//raw_data_3D = result.clone();
+	//for(int i=0;i<result.cols;i++)
+	//	normalize(result.col(i),raw_data_3D.col(i),0,1,NORM_MINMAX); //normalize to 0-1
 	model.release();
-	//output_mat_as_txt_file("raw_data_3D.txt",raw_data_3D);
+
 }
 
 void Preprocessing_Data::output_mat_as_txt_file(char file_name[],Mat mat)
@@ -104,6 +117,20 @@ void Preprocessing_Data::output_mat_as_csv_file(char file_name[],Mat mat)
 		fout << endl;
 	}
 }            
+
+void Preprocessing_Data::output_mat_as_csv_file_int(char file_name[],Mat mat)
+{
+	ofstream fout(file_name); 
+	for(int i=0;i<mat.rows;i++)
+	{
+		for(int j=0;j<mat.cols;j++)
+		{
+			if(j!=0) fout << ",";
+			fout << mat.at<int>(i,j) ;
+		}
+		fout << endl;
+	}
+}   
 
 /**
  * 眖data璸衡キА籔covariance matrix
@@ -208,7 +235,7 @@ void Preprocessing_Data::read_raw_data()
 		}
 	}
 
-	//cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
+	cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][27] << " " << raw_data[0][28] << " " << raw_data[0][29] << " " << raw_data[0][30]  << " " << raw_data[0][31] << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][31] << " " << raw_data[0][32] << " " << raw_data[0][33] << " " << raw_data[0][34]  << " " << raw_data[0][35] << endl;
 	//29:Year,30:Hour,31:Minute,32:second,33:millisecond
@@ -241,9 +268,16 @@ float Preprocessing_Data::DistanceOfLontitudeAndLatitude(float lat1,float lat2,f
 	float c = 2 * atan2((double)sqrt(a),(double)sqrt(1.0-a));
 	float d = R * c;
 
+	/*
 	if(d>20.0) 
 		return 0.0;
-	else 
+	else if(d==0.0)
+		return 0.0;
+	else if(d<1e-5)
+		return 0.01;
+	else if(d>1e-5 && d<20.0)
+		return 0.1;
+	*/
 		return d;
 }
 
@@ -299,7 +333,7 @@ void Preprocessing_Data::set_hour_data(int time_title[])
 	*/
 }
 
-Mat Preprocessing_Data::Gaussian_filter(int attribute_title[],int MAX_KERNEL_LENGTH)
+Mat Preprocessing_Data::Gaussian_filter(int attribute_title[])
 {
 	Mat Gaussian_filter_mat(raw_data.size(),9, CV_32F);
 
@@ -311,13 +345,38 @@ Mat Preprocessing_Data::Gaussian_filter(int attribute_title[],int MAX_KERNEL_LEN
 			Gaussian_filter_mat.at<float>(i,j) = raw_data[i][attribute_title[j]];
 		}
 	}
+	output_mat_as_csv_file("raw_data_mat.csv",Gaussian_filter_mat);
+	
 
-	//int MAX_KERNEL_LENGTH = 20;
-    for(int i=1;i<MAX_KERNEL_LENGTH;i=i+2)
-    { 
-		GaussianBlur( Gaussian_filter_mat, Gaussian_filter_mat, Size( i, i ), 0.5, 0.5 );
+	//float sum, total = 163;
+	//float weight[5] = {70, 56, 25, 8, 1}; // 把σ + 玡4ㄨdata
+	//for (int i = 0; i < Gaussian_filter_mat.cols; i++){
+	//	for (int j = 4; j < Gaussian_filter_mat.rows; j++){
+	//		sum = 0;
+	//		for (int k = 0; k < 5; k++){
+	//			sum += weight[k] * Gaussian_filter_mat.at<float>(j - k, i);
+	//		}
+	//		Gaussian_filter_mat.at<float>(j, i) = sum / total;
+	//	}
+	//}
+	
+	//GaussianBlur( Gaussian_filter_mat, Gaussian_filter_mat, Size( 3, 3 ), 0, 0 );
+
+	
+	int MAX_KERNEL_LENGTH = 5;
+	for(int j=0;j<Gaussian_filter_mat.cols;j++)
+	{
+		GaussianBlur( Gaussian_filter_mat.col(j), Gaussian_filter_mat.col(j), Size(MAX_KERNEL_LENGTH, 1), 0.1, 0.1);
 	}
+	
 
+	//int KERNEL_LENGTH = 600;
+	//for(int i=1;i<MAX_KERNEL_LENGTH;i=i+2)
+    //{ 
+	//	GaussianBlur( Gaussian_filter_mat, Gaussian_filter_mat, Size( KERNEL_LENGTH, 1 ), 0.5, 0.5 );
+	//}
+	
+	output_mat_as_csv_file("Gaussian_filter_mat.csv",Gaussian_filter_mat);
 	return Gaussian_filter_mat;
 }
 
@@ -325,64 +384,86 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 {
 	//Mat handle_mat(raw_data.size(),4, CV_32F);
 	Mat handle_mat;
+	Mat handle_mat_raw;
 
-	Mat Gaussian_filter_mat = Gaussian_filter(attribute_title,20).clone();
-
+	Mat Gaussian_filter_mat = Gaussian_filter(attribute_title).clone();
+	
 	Mat norm_gravity(1, raw_data.size(), CV_32F);
 	Mat norm_linear_acc(1, raw_data.size(), CV_32F);
 	Mat norm_gyro(1, raw_data.size(), CV_32F);
 	//Compute norm
 	for(int i=0;i<raw_data.size();i++)
 	{
-		norm_gravity.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
-		norm_linear_acc.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
-		norm_gyro.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
+		norm_gravity.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,0),Gaussian_filter_mat.at<float>(i,1),Gaussian_filter_mat.at<float>(i,2));
+		norm_linear_acc.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,3),Gaussian_filter_mat.at<float>(i,4),Gaussian_filter_mat.at<float>(i,5));
+		norm_gyro.at<float>(0,i) = norm_value(Gaussian_filter_mat.at<float>(i,6),Gaussian_filter_mat.at<float>(i,7),Gaussian_filter_mat.at<float>(i,8));
 	}
+	
+	//for(int i=0;i<raw_data.size();i++)
+	//{
+	//	norm_gravity.at<float>(0,i) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
+	//	norm_linear_acc.at<float>(0,i) = norm_value(raw_data[i][attribute_title[3]],raw_data[i][attribute_title[4]],raw_data[i][attribute_title[5]]);
+	//	norm_gyro.at<float>(0,i) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
+	//}
 
 	handle_mat.push_back(norm_gravity);
+	handle_mat_raw.push_back(norm_gravity);
 	handle_mat.push_back(norm_linear_acc);
+	handle_mat_raw.push_back(norm_linear_acc);
 	handle_mat.push_back(norm_gyro);
-	//Compute norm
-	//for(int i=0;i<raw_data.size();i++)
-	//{
-	//	handle_mat.at<float>(i,0) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[0]),Gaussian_filter_mat.at<float>(i,attribute_title[1]),Gaussian_filter_mat.at<float>(i,attribute_title[2]));
-	//	handle_mat.at<float>(i,1) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[3]),Gaussian_filter_mat.at<float>(i,attribute_title[4]),Gaussian_filter_mat.at<float>(i,attribute_title[5]));
-	//	handle_mat.at<float>(i,2) = norm_value(Gaussian_filter_mat.at<float>(i,attribute_title[6]),Gaussian_filter_mat.at<float>(i,attribute_title[7]),Gaussian_filter_mat.at<float>(i,attribute_title[8]));
-	//}
-	//for(int i=0;i<raw_data.size();i++)
-	//{
-	//	handle_mat.at<float>(i,0) = norm_value(raw_data[i][attribute_title[0]],raw_data[i][attribute_title[1]],raw_data[i][attribute_title[2]]);
-	//	handle_mat.at<float>(i,1) = norm_value(raw_data[i][attribute_title[3]],raw_data[i][attribute_title[4]],raw_data[i][attribute_title[5]]);
-	//	handle_mat.at<float>(i,2) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
-	//}
+	handle_mat_raw.push_back(norm_gyro);
 
+	output_mat_as_csv_file("Norm_Gaussian_filter_mat.csv",handle_mat.t());
 	//Compute latitude & longitude
 	int lat_index = attribute_title[9];
 	int lon_index = attribute_title[10];
-	Mat first_order_distance_mat(1, raw_data.size(), CV_32F);
+	Mat first_order_distance_mat = Mat::zeros(1, raw_data.size(), CV_32F);
+	
 	for(int i=0;i<raw_data.size();i++)
 	{
 		if(i==0)
 			first_order_distance_mat.at<float>(0,i) = 0.0;
 		else
 		{
-			first_order_distance_mat.at<float>(0,i) = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
+			float dist = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
+			first_order_distance_mat.at<float>(0,i) = dist;
 		}
 	}
 
-	handle_mat.push_back(first_order_distance_mat);
-	Mat handle_mat2 = handle_mat.t();
+	Mat first_order_distance_adjust_mat(1, raw_data.size(), CV_32F);
+	for(int i=0;i<raw_data.size();i++)
+	{
+		float d = first_order_distance_mat.at<float>(0,i);
+		float d1;
+		if(d>20.0) 
+			d1 = 0.0;
+		else if(d==0.0)
+			d1 = 0.0;
+		else if(d<1e-5)
+			d1 = 0.01;
+		else if(d>=1e-5 && d<=20.0)
+			d1 = 0.1;
 
+		first_order_distance_adjust_mat.at<float>(0,i) = d1;
+	}	
 
-	//cout << handle_mat << endl;
-	Mat normalize_mat = handle_mat2;
-	for(int i=0;i<handle_mat2.cols;i++)
-		normalize(handle_mat2.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
-	//cout << normalize_mat << endl;
+	handle_mat.push_back(first_order_distance_adjust_mat);
+	handle_mat_raw.push_back(first_order_distance_mat);
+
+	Mat handle_mat_transpose = handle_mat.t();
+	Mat handle_mat_raw_transpose = handle_mat_raw.t();
+	output_mat_as_csv_file("handle_mat_transpose.csv",handle_mat_transpose);
+	output_mat_as_csv_file("handle_mat_raw_transpose.csv",handle_mat_raw_transpose);
+
+	Mat normalize_mat = handle_mat_transpose;
+	for(int i=0;i<handle_mat_transpose.cols;i++)
+		normalize_mat.col(i) = normalize_column(handle_mat_transpose.col(i)).clone();
+		//normalize(handle_mat2.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
+
 	output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
-	normalize_mat.col(3).mul(100.0);//enhance the weighting of distance
+	//normalize_mat.col(2).mul(100.0);//enhance the weighting of distance
 
-	output_mat_as_csv_file("normalize_mat2.csv",normalize_mat);
+	//output_mat_as_csv_file("normalize_mat2.csv",normalize_mat);
 
 	return normalize_mat;
 
@@ -392,7 +473,7 @@ void Preprocessing_Data::voting(int k,Mat cluster_tag,int row_size)
 {
 	int time_step_amount = floor(row_size/600.0);
 	histogram = Mat::zeros(time_step_amount,k,CV_32S);
-	int t = 1;
+	int t = 0;
 	for(int i=0;i<time_step_amount;i++)
 	{
 		for(int j=0;j<600;j++)
@@ -402,6 +483,8 @@ void Preprocessing_Data::voting(int k,Mat cluster_tag,int row_size)
 			t++;
 		}
 	}
+
+	output_mat_as_csv_file_int("histogram.csv",histogram);
 
 }
 
@@ -470,11 +553,6 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_w
 	output_mat_as_txt_file("normalized_MDS_mat_2.txt",MDS_mat);
 
 	return MDS_mat; 
-}
-
-void Preprocessing_Data::mrdivide(const cv::Mat &A, const cv::Mat &b, cv::Mat &x) {
-     cv::solve(A.t(), b.t(), x);
-     x.t();
 }
 
 Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
@@ -1004,4 +1082,51 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 	Mat rgb_mat2 = LAB2RGB(max_align_mat).clone();
 
 	return rgb_mat2;
+}
+
+void Preprocessing_Data::gray2rgb(float gray,float& r,float& g,float& b)
+{
+	r = g = b = 0.0;
+	if(gray>1.0)
+	{
+		r = 1.0;
+		g = 0.0;
+		b = 0.0;
+	}
+	if(gray<0.0)
+	{
+		r = 0.0;
+		g = 0.0;
+		b = 1.0;
+	}
+
+	if(gray<0.33333)
+	{
+		b = 1.0 - gray*3.0;
+		g = gray*3.0;
+	}
+	else if(gray<0.66666)
+	{
+		r = (gray-0.33333)*3.0;
+		g = 1.0;
+	}
+	else
+	{
+		r = 1.0;
+		g = 1.0 - (gray-0.66666)*3.0;
+	}
+}
+
+Mat Preprocessing_Data::normalize_column(Mat col_mat)
+{
+	Mat output_mat = col_mat;
+	double min,max;
+	minMaxLoc(output_mat, &min, &max);
+	for(int i=0;i<col_mat.rows;i++)
+	{
+		//output_mat.at<float>(i,0) = ( col_mat.at<float>(i,0) - min ) / (max - min);
+		output_mat.at<float>(i,0) = col_mat.at<float>(i,0) / max;
+	}
+
+	return output_mat;
 }

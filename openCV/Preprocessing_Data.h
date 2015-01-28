@@ -27,6 +27,7 @@ private:
 
 	void output_mat_as_txt_file(char file_name[],Mat);
 	void output_mat_as_csv_file(char file_name[],Mat);
+	void output_mat_as_csv_file_int(char file_name[],Mat);
 	void calcCovMat(Mat&, Mat&, Mat&);
 	void reduceDimPCA(Mat&, int, Mat&, Mat&);
 	void read_raw_data();
@@ -34,7 +35,7 @@ private:
 	float norm_value(float,float,float);
 	float DistanceOfLontitudeAndLatitude(float,float,float,float);
 	void set_hour_data(int time_title[]);
-	Mat Gaussian_filter(int attribute_title[],int);
+	Mat Gaussian_filter(int attribute_title[]);
 	Mat set_matrix(int attribute_title[],int);
 	void voting(int,Mat,int);
 	Mat Position_by_MDS(Mat,int ,float);
@@ -45,7 +46,8 @@ private:
 	bool lab_boundary_test(float,float,float);
 	Mat LAB2RGB(Mat);
 	Mat compute_centroid(Mat);
-	void mrdivide(const Mat &, const Mat &, Mat &);
+	void gray2rgb(float,float& ,float& ,float&);
+	Mat normalize_column(Mat);
 public:
 	Preprocessing_Data();
 
