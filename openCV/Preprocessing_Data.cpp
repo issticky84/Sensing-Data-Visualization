@@ -7,6 +7,7 @@
 #include "tapkee/tapkee.hpp"
 #include "tapkee/callbacks/dummy_callbacks.hpp"
 #include <opencv2/core/eigen.hpp> //cv2eigen
+#include <algorithm>
 
 using namespace tapkee;
 using namespace Eigen;
@@ -20,11 +21,11 @@ void Preprocessing_Data::start()
 {
 	
 	//=================Read CSV file====================//
-	clock_t begin = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_2315_new.csv");
+	clock_t begin1 = clock();
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
 	read_raw_data(); 
-	clock_t end = clock();
-	printf("Read csv elapsed time: %f\n",double(end - begin) / CLOCKS_PER_SEC);
+	clock_t end1 = clock();
+	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
 	//==================================================//
 
 	int attribute_title_size = 11;
@@ -50,10 +51,22 @@ void Preprocessing_Data::start()
 	clock_t end3 = clock();
     //TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 1),  硂柑Τ把计∕﹚k-means挡材把计琌程Ω计材把计琌弘絋ぶ材把计琌ㄌ酚玡ㄢ把计非絛ㄒい碞琌ㄢ常把酚 or よΑ∕﹚
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
+	//=================LAB alignment====================//
+	if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment(cluster_centers);
+	else if(cluster_centers.cols==1) rgb_mat2 = lab_alignment_dim1(cluster_centers);
+	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
+	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
 	//==================================================//
+	//sort the cluster by color and generate new cluster tag and cluster center
+	clock_t begin4 = clock();
+	sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
+	clock_t end4 = clock();
+	printf("\nSort by Color elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
+	output_mat_as_csv_file("lab_mat2.csv",rgb_mat2);
 	output_mat_as_csv_file("cluster_center.csv",cluster_centers);
-	voting(k,cluster_tag,model.rows); // Type: int
 	output_mat_as_csv_file_int("cluster_tag.csv",cluster_tag);
+	//==================================================//
+	voting(k,cluster_tag,model.rows); // Type: int	
 	cluster_tag.release();
 	//===================PCA RGB=======================//
 	Mat components, result;
@@ -66,14 +79,10 @@ void Preprocessing_Data::start()
 	//for(int i=0;i<result.cols;i++)
 	//	normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
 	//output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
-	//=================LAB alignment====================//
-	if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment(cluster_centers);
-	else if(cluster_centers.cols==1) rgb_mat2 = lab_alignment_dim1(cluster_centers);
-	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
-	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
 	//===============Position (MDS)=====================//
 	clock_t begin5 = clock();
 	position = Position_by_MDS(cluster_centers,k,20).clone(); //Type:double
+	output_mat_as_csv_file("position.csv",position);
 	clock_t end5 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	cluster_centers.release();
@@ -98,10 +107,112 @@ void Preprocessing_Data::start()
 
 }
 
+void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers, Mat& cluster_tag)
+{
+	vector< vector<float> > rgb_vector;
+	for(int i=0;i<k;i++)
+	{
+		vector<float> rgb;
+		for(int j=0;j<3;j++)
+		{
+			rgb.push_back(rgb_mat2.at<float>(i,j));
+		}
+		rgb_vector.push_back(rgb);
+	}
+
+	class cluster_info{
+	public:
+		int key;
+		vector<float> rgb_vec;
+		
+		cluster_info(int k,vector<float> rgb){
+			key = k;
+			rgb_vec = rgb;
+		} 
+	};
+	class sort_by_rgb{
+	public:
+		inline bool operator() (cluster_info& c1, cluster_info& c2)
+		{
+			float R1 = c1.rgb_vec[0];
+			float G1 = c1.rgb_vec[1];
+			float B1 = c1.rgb_vec[2];
+			float R2 = c2.rgb_vec[0];
+			float G2 = c2.rgb_vec[1];
+			float B2 = c2.rgb_vec[2];
+			Mat rgb_color1(1, 1, CV_32FC3);
+			Mat rgb_color2(1, 1, CV_32FC3);
+			Mat hsv_color1(1, 1, CV_32FC3);
+			Mat hsv_color2(1, 1, CV_32FC3);
+			rgb_color1.at<Vec3f>(0,0) = Vec3f(R1,G1,B1);
+			rgb_color2.at<Vec3f>(0,0) = Vec3f(R2,G2,B2);
+			cvtColor(rgb_color1,hsv_color1,CV_RGB2HLS);
+			cvtColor(rgb_color2,hsv_color2,CV_RGB2HLS);
+			//float intensity1 = 0.2126*R1 + 0.7152*G1 + 0.0722*B1;
+			//float intensity2 = 0.2126*R2 + 0.7152*G2 + 0.0722*B2;
+			//return (intensity1 < intensity2);
+			
+			//return ( R1*256*256 + G1*256 + B1 < R2*256*256 + G2*256 + B2 );
+
+			//return ( R1 > R2 || (R1 == R2 && G1 > G2) || (R1 == R2 && G1 == G2 && B1 > B2) );
+			float H1 = hsv_color1.at<Vec3f>(0,0).val[0];
+			float H2 = hsv_color2.at<Vec3f>(0,0).val[0];
+			float L1 = hsv_color1.at<Vec3f>(0,0).val[1];
+			float L2 = hsv_color2.at<Vec3f>(0,0).val[1];
+			float S1 = hsv_color1.at<Vec3f>(0,0).val[2];
+			float S2 = hsv_color2.at<Vec3f>(0,0).val[2];
+			return (H1<H2 || (H1==H2 && L1>L2) || (H1==H2 && L1==L2 && S1>S2) );
+			//return (H1<H2);
+		}
+	};
+
+	vector< cluster_info > cluster_vec;
+	for(int i=0;i<k;i++)
+	{
+		cluster_vec.push_back( cluster_info(i,rgb_vector[i]) );
+	}
+
+	sort(cluster_vec.begin(), cluster_vec.end(), sort_by_rgb());
+
+	
+	for(int i=0;i<cluster_vec.size();i++)
+	{
+		cout << cluster_vec[i].key << " ";
+	}
+	
+	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
+	output_mat_as_csv_file_int("cluster_tag_old.csv",cluster_tag);
+	Mat cluster_centers_old = cluster_centers.clone();
+	Mat rgb_mat2_old = rgb_mat2.clone();
+	Mat cluster_tag_old = cluster_tag.clone();
+	for(int i=0;i<k;i++)
+	{
+		int new_tag = cluster_vec[i].key;
+		cluster_centers_old.row(new_tag).copyTo(cluster_centers.row(i));
+		rgb_mat2_old.row(new_tag).copyTo(rgb_mat2.row(i));
+		//猔種:row狡籹ぃノrgb_mat2.row(i) = rgb_mat2_old.row(new_tag).clone();!!!!!!!
+	}
+	for(int i=0;i<raw_data.size();i++)
+	{
+		int find;
+		for(int j=0;j<k;j++)
+		{
+			if(cluster_vec[j].key == cluster_tag_old.at<int>(i,0))
+			{
+				find = j;
+				break;
+			}
+		}
+		cluster_tag.at<int>(i,0) = find;	
+	}
+}
+
 void Preprocessing_Data::output_mat_as_txt_file(char file_name[],Mat mat)
 {
 	ofstream fout(file_name);
 	fout << mat << endl;
+
+	fout.close();
 }
 
 void Preprocessing_Data::output_mat_as_csv_file(char file_name[],Mat mat)
@@ -116,6 +227,7 @@ void Preprocessing_Data::output_mat_as_csv_file(char file_name[],Mat mat)
 		}
 		fout << endl;
 	}
+	fout.close();
 }            
 
 void Preprocessing_Data::output_mat_as_csv_file_int(char file_name[],Mat mat)
@@ -130,6 +242,8 @@ void Preprocessing_Data::output_mat_as_csv_file_int(char file_name[],Mat mat)
 		}
 		fout << endl;
 	}
+
+	fout.close();
 }   
 
 /**
@@ -235,7 +349,7 @@ void Preprocessing_Data::read_raw_data()
 		}
 	}
 
-	cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
+	//cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][27] << " " << raw_data[0][28] << " " << raw_data[0][29] << " " << raw_data[0][30]  << " " << raw_data[0][31] << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][31] << " " << raw_data[0][32] << " " << raw_data[0][33] << " " << raw_data[0][34]  << " " << raw_data[0][35] << endl;
 	//29:Year,30:Hour,31:Minute,32:second,33:millisecond
@@ -278,6 +392,9 @@ float Preprocessing_Data::DistanceOfLontitudeAndLatitude(float lat1,float lat2,f
 	else if(d>1e-5 && d<20.0)
 		return 0.1;
 	*/
+	if(d>1.0)
+		return 0.0;
+	else
 		return d;
 }
 
@@ -292,7 +409,10 @@ void Preprocessing_Data::set_hour_data(int time_title[])
 		hour_data[i] = raw_data[t][hour_index]; 
 		t += 600;
 	}	
-
+	Mat hour_mat = Mat::zeros(time_step_amount,1,CV_32S);
+	for(int i=0;i<time_step_amount;i++)
+		hour_mat.at<int>(i,0) = hour_data[i];
+	output_mat_as_csv_file_int("hour_data.csv",hour_mat);
 	/*
 	int begin_hour,end_hour,num_of_begin_hour,num_of_end_hour;
 	int num_of_five_minutes = hour_data.size();
@@ -406,8 +526,8 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 	//	norm_gyro.at<float>(0,i) = norm_value(raw_data[i][attribute_title[6]],raw_data[i][attribute_title[7]],raw_data[i][attribute_title[8]]);
 	//}
 
-	handle_mat.push_back(norm_gravity);
-	handle_mat_raw.push_back(norm_gravity);
+	//handle_mat.push_back(norm_gravity);
+	//handle_mat_raw.push_back(norm_gravity);
 	handle_mat.push_back(norm_linear_acc);
 	handle_mat_raw.push_back(norm_linear_acc);
 	handle_mat.push_back(norm_gyro);
@@ -426,26 +546,45 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 		else
 		{
 			float dist = DistanceOfLontitudeAndLatitude(raw_data[i-1][lat_index],raw_data[i][lat_index],raw_data[i-1][lon_index],raw_data[i][lon_index]);
+			//if(dist>1.0) dist = 1.0;
 			first_order_distance_mat.at<float>(0,i) = dist;
 		}
 	}
+
+	output_mat_as_csv_file("first_order_distance_mat.csv",first_order_distance_mat.t());
+	sample_distance(first_order_distance_mat);
+	output_mat_as_csv_file("first_order_distance_mat_sample.csv",first_order_distance_mat.t());
 
 	Mat first_order_distance_adjust_mat(1, raw_data.size(), CV_32F);
 	for(int i=0;i<raw_data.size();i++)
 	{
 		float d = first_order_distance_mat.at<float>(0,i);
 		float d1;
-		if(d>20.0) 
+		if(d==0.0 || d>0.045) 
+			d1 = 0.0;
+		else if(d!=0.0)	
+		{
+			d1 = log(d*10000.0);
+		}
+		/*
+		if(d>10.0) 
 			d1 = 0.0;
 		else if(d==0.0)
 			d1 = 0.0;
 		else if(d<1e-5)
 			d1 = 0.01;
-		else if(d>=1e-5 && d<=20.0)
+		else if(d>1e-2 && d<10.0)
+			d1 = 0.7;
+		else if(d>1e-3 && d<1e-2)
+			d1 = 0.5;
+		else if(d>1e-5 && d<1e-3)
 			d1 = 0.1;
+		*/
 
 		first_order_distance_adjust_mat.at<float>(0,i) = d1;
 	}	
+
+
 
 	handle_mat.push_back(first_order_distance_adjust_mat);
 	handle_mat_raw.push_back(first_order_distance_mat);
@@ -456,17 +595,53 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 	output_mat_as_csv_file("handle_mat_raw_transpose.csv",handle_mat_raw_transpose);
 
 	Mat normalize_mat = handle_mat_transpose;
-	for(int i=0;i<handle_mat_transpose.cols;i++)
+	for(int i=0;i<handle_mat_transpose.cols;i++)///////////
 		normalize_mat.col(i) = normalize_column(handle_mat_transpose.col(i)).clone();
 		//normalize(handle_mat2.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
 
 	output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
-	//normalize_mat.col(2).mul(100.0);//enhance the weighting of distance
+	//normalize_mat.col(2) = normalize_mat.col(2).mul(100.0);//enhance the weighting of distance
+	
 
-	//output_mat_as_csv_file("normalize_mat2.csv",normalize_mat);
+	output_mat_as_csv_file("normalize_mat2.csv",normalize_mat);
 
 	return normalize_mat;
 
+}
+
+void Preprocessing_Data::sample_distance(Mat& first_order_distance_mat)
+{
+	int interval = 10;
+	for(int i=0;i<raw_data.size()-1;i++)
+	{
+		int start = i;
+		int cur_index = i;
+		int count = 0;
+		if(first_order_distance_mat.at<float>(0,cur_index) != 0.0)
+		{
+			//cout << "i " << i << endl;
+			cur_index++;
+			while( first_order_distance_mat.at<float>(0,cur_index) == 0.0)
+			{
+				count++;
+				cur_index++;
+				//cout << "count " << count << " " << "current index " << cur_index << endl;
+				if(count>interval) break;
+			}
+			if(count>0 && count<=interval)
+			{
+				//cout << "start " << first_order_distance_mat.at<float>(0,start) << " end " << first_order_distance_mat.at<float>(0,cur_index) << endl;
+				float interpolation = ( first_order_distance_mat.at<float>(0,start) + first_order_distance_mat.at<float>(0,cur_index) ) / (count+2);
+				//cout << "interpolation " << interpolation << endl;
+				for(int j=0;j<count+2;j++)
+				{
+					first_order_distance_mat.at<float>(0,start+j) = interpolation;
+				}
+				//system("pause");
+			}
+		}
+		//i = cur_index;
+	}
 }
 
 void Preprocessing_Data::voting(int k,Mat cluster_tag,int row_size)
@@ -526,19 +701,19 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_w
 
 	int time_step_amount = histogram.rows;
 	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
-	//for(int i=0;i<time_step_amount;i++)
-	//	for(int j=0;j<time_step_amount;j++)
-	//		for(int t=0;t<k;t++)
-	//		{
-	//			histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
-	//		}
 	for(int i=0;i<time_step_amount;i++)
 		for(int j=0;j<time_step_amount;j++)
-			for(int t=0;t<cluster_centers.cols;t++)
+			for(int t=0;t<k;t++)
 			{
-				histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
+				histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
 			}
-	histo_coeff.mul(1000);
+	//for(int i=0;i<time_step_amount;i++)
+	//	for(int j=0;j<time_step_amount;j++)
+	//		for(int t=0;t<cluster_centers.cols;t++)
+	//		{
+	//			histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
+	//		}
+	//histo_coeff.mul(1000);
 	output_mat_as_txt_file("histo_coeff.txt",histo_coeff);
 	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
 	cv2eigen(histo_coeff,histo_coeff_EigenType);
@@ -608,8 +783,9 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 
 	float max_move = 0.0;
 	float max_scale = 0.0;
-	Mat align_mat;
-	Mat max_align_mat = cluster_center_PCA;
+	//Mat max_align_mat = cluster_center_PCA;
+	Mat align_mat = Mat::zeros(cluster_center.rows,3,CV_32F);
+	Mat max_align_mat = Mat::zeros(cluster_center.rows,3,CV_32F);
 	int start = 1;
 	int luminance_threshold = 30;
 	vector<int> scale_vector;
@@ -619,11 +795,12 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 		for(int i=start;i<=150;i++)
 			scale_vector.push_back(i);
 		
-		int low = start;
-		int high = scale_vector.size();
+		float low = start;	
+		float high = scale_vector.size();
 		while(low <= high)
 		{
-			int mid = (low + high)/2; 
+			float mid = (low + high)/2; 
+			//cout << mid << " " << high << " " << low << endl;
 			Mat cluster_center_PCA_temp,cluster_center_PCA_weight,cluster_center_axis_invert;
 			add(cluster_center_PCA_const,move_vector[t],cluster_center_PCA_temp); //move
 			cluster_center_PCA_temp = cluster_center_PCA_temp.mul(mid); //scale
@@ -643,7 +820,7 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 			bool flag = true;
 			for(int i=0;i<align_mat.rows;i++)
 			{
-				if(align_mat.at<float>(i,0)<luminance_threshold)
+				if( (align_mat.at<float>(i,0)<luminance_threshold) || (align_mat.at<float>(i,0)>90.0) )
 				{
 					flag = false;
 					break;
@@ -671,16 +848,20 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 
 		}
 
-		if(low>max_scale)
-		{
+		if(low>=max_scale)
+		{		
 			max_scale = low;
 			max_move = move_vector[t];
-			max_align_mat = align_mat;
+			max_align_mat = align_mat.clone();
 			start = max_scale;
 		}
 
 		scale_vector.clear();
+
 	}
+
+
+	output_mat_as_csv_file("lab_raw_data.csv",max_align_mat);
 
 	if(max_scale==0)
 	{
@@ -694,6 +875,7 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 	}
 
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
+	
 	Mat rgb_mat = LAB2RGB(max_align_mat).clone();
 
 	return rgb_mat;
@@ -723,7 +905,7 @@ bool Preprocessing_Data::lab_boundary_test(float p1,float p2,float p3)
 	lab_color.at<Vec3f>(0, 0) = Vec3f(p1, p2, p3);
 	cvtColor(lab_color, rgb_color, CV_Lab2BGR);
 	cvtColor(rgb_color, lab_color, CV_BGR2Lab);
-	if(abs(lab_color.at<Vec3f>(0,0).val[0] - p1) > 1.0 || abs(lab_color.at<Vec3f>(0,0).val[1] - p2) > 1.0 || abs(lab_color.at<Vec3f>(0,0).val[2] - p3) > 1.0)
+	if(abs(lab_color.at<Vec3f>(0,0).val[0] - p1) > 0.01 || abs(lab_color.at<Vec3f>(0,0).val[1] - p2) > 0.01 || abs(lab_color.at<Vec3f>(0,0).val[2] - p3) > 0.01)
 		test = false;
 	return test;
 }
@@ -905,7 +1087,7 @@ Mat Preprocessing_Data::lab_alignment_dim1(Mat cluster_center)
 		{
 			max_scale = low;
 			max_move = move_vector[t];
-			max_align_mat = align_mat;
+			max_align_mat = align_mat.clone();;
 			start = max_scale;
 		}
 
@@ -1060,7 +1242,7 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 		{
 			max_scale = low;
 			max_move = move_vector[t];
-			max_align_mat = align_mat;
+			max_align_mat = align_mat.clone();
 			start = max_scale;
 		}
 

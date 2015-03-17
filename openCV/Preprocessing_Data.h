@@ -48,6 +48,8 @@ private:
 	Mat compute_centroid(Mat);
 	void gray2rgb(float,float& ,float& ,float&);
 	Mat normalize_column(Mat);
+	void sort_by_color(int, Mat&, Mat&, Mat&);
+	void sample_distance(Mat&);
 public:
 	Preprocessing_Data();
 

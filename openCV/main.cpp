@@ -34,7 +34,7 @@ int windowSize[2];
 char quote[24][80];
 float scale_amount = 0.0;
 float x_amount=0.0,y_amount=0.0,z_amount=0.0;
-vector<float> draw_color(3);
+//vector<float> draw_color(3);
 //vector < vector<float> > raw_data;
 //vector <int> hour_data;
 //Mat histogram;//int
@@ -373,7 +373,7 @@ void motion(int x, int y)
 		y_amount = (y - old_y);
 }
 
-void DrawRectWithOpenGL(RECTANGLE* pRect)
+void DrawRectWithOpenGL(RECTANGLE* pRect,vector<float> draw_color)
 {
 	glPushMatrix();
 
@@ -463,11 +463,13 @@ void display()
 	int current_hour;
 	int last_hour = -1;
 	int t=0;
+	//for(int i=0;i<preprocessing_data.histogram.rows;++i)
 	for(int i=0;i<preprocessing_data.histogram.rows;++i)
 	{
 		current_hour = preprocessing_data.hour_data[i];
 		if(current_hour!=last_hour)
 		{
+			vector<float> draw_color(3);
 			draw_color[0] = 1; 
 			draw_color[1] = 1; 
 			draw_color[2] = 1;
@@ -477,8 +479,9 @@ void display()
 			line->w = 1050;
 			line->x = 0;
 			line->y = y_coord - 5;
-			DrawRectWithOpenGL(line);
+			DrawRectWithOpenGL(line,draw_color);
 			DrawText_FTGL(current_hour,20,y_coord-15);
+			draw_color.clear();
 			delete(line);
 			t++;
 			y_coord-=10;
@@ -487,6 +490,7 @@ void display()
 		int start = 0;
 		for(int k=0;k<preprocessing_data.histogram.cols;++k)
 		{   
+			vector<float> draw_color(3);
 			if(preprocessing_data.histogram.at<int>(i,k)!=0)
 			{
 				pixels = preprocessing_data.histogram.at<int>(i,k);
@@ -499,13 +503,14 @@ void display()
 					rect = new RECTANGLE();
 					rect->h = 3;
 					rect->w = 0.1;
-					rect->x = 110 + preprocessing_data.position.at<double>(i,1)/10.0 + (double)u*0.1;
+					rect->x = 110 + preprocessing_data.position.at<double>(i,0)/10.0 + (double)u*0.1;
 					rect->y = y_coord;
-					DrawRectWithOpenGL(rect);	
+					DrawRectWithOpenGL(rect,draw_color);	
 					delete(rect);
-				}
+				}			
 				start += pixels;
-			}		
+			}	
+			draw_color.clear();
 		}
 
 		y_coord-=5;
@@ -527,8 +532,8 @@ int main(int argc, char** argv)
 	glutDisplayFunc(display);
 	glutReshapeFunc(reshape);
 	//glutKeyboardFunc(keyboard);
-	//glutMouseFunc(mouse);
-	//glutMotionFunc(motion);
+	glutMouseFunc(mouse);
+	glutMotionFunc(motion);
 
 	/*
 	//=================Read CSV file====================//
