@@ -22,7 +22,7 @@ void Preprocessing_Data::start()
 	
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_2315_new.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -82,7 +82,7 @@ void Preprocessing_Data::start()
 	//===============Position (MDS)=====================//
 	clock_t begin5 = clock();
 	position = Position_by_MDS(cluster_centers,k,20).clone(); //Type:double
-	output_mat_as_csv_file("position.csv",position);
+	output_mat_as_csv_file_double("position.csv",position);
 	clock_t end5 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	cluster_centers.release();
@@ -230,6 +230,21 @@ void Preprocessing_Data::output_mat_as_csv_file(char file_name[],Mat mat)
 	fout.close();
 }            
 
+void Preprocessing_Data::output_mat_as_csv_file_double(char file_name[],Mat mat)
+{
+	ofstream fout(file_name); 
+	for(int i=0;i<mat.rows;i++)
+	{
+		for(int j=0;j<mat.cols;j++)
+		{
+			if(j!=0) fout << ",";
+			fout << mat.at<double>(i,j) ;
+		}
+		fout << endl;
+	}
+	fout.close();
+}        
+
 void Preprocessing_Data::output_mat_as_csv_file_int(char file_name[],Mat mat)
 {
 	ofstream fout(file_name); 
@@ -315,6 +330,7 @@ void Preprocessing_Data::read_raw_data()
 	if(!csv_file) 
 	{
 		cout << "Can't open config file!" << endl;
+		system("pause");
 		exit(1);
 	}
 
@@ -552,7 +568,7 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 	}
 
 	output_mat_as_csv_file("first_order_distance_mat.csv",first_order_distance_mat.t());
-	sample_distance(first_order_distance_mat);
+	interpolate_distance(first_order_distance_mat,300);
 	output_mat_as_csv_file("first_order_distance_mat_sample.csv",first_order_distance_mat.t());
 
 	Mat first_order_distance_adjust_mat(1, raw_data.size(), CV_32F);
@@ -566,20 +582,7 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 		{
 			d1 = log(d*10000.0);
 		}
-		/*
-		if(d>10.0) 
-			d1 = 0.0;
-		else if(d==0.0)
-			d1 = 0.0;
-		else if(d<1e-5)
-			d1 = 0.01;
-		else if(d>1e-2 && d<10.0)
-			d1 = 0.7;
-		else if(d>1e-3 && d<1e-2)
-			d1 = 0.5;
-		else if(d>1e-5 && d<1e-3)
-			d1 = 0.1;
-		*/
+
 
 		first_order_distance_adjust_mat.at<float>(0,i) = d1;
 	}	
@@ -609,9 +612,9 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 
 }
 
-void Preprocessing_Data::sample_distance(Mat& first_order_distance_mat)
+void Preprocessing_Data::interpolate_distance(Mat& first_order_distance_mat,int interval)
 {
-	int interval = 10;
+	//int interval = 10;
 	for(int i=0;i<raw_data.size()-1;i++)
 	{
 		int start = i;
@@ -665,7 +668,8 @@ void Preprocessing_Data::voting(int k,Mat cluster_tag,int row_size)
 
 Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_weighting)
 {
-	//test
+	//====================================================//
+	//GMM(Gaussian Mixutre Model)
 	int time_step = floor(raw_data.size()/600.0);
 	Mat Ev = Mat::zeros(time_step,cluster_centers.cols,CV_32F);
 	for(int i=0;i<time_step;i++)
@@ -679,7 +683,7 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_w
 		Ev.row(i)/=base;
 	}
 	output_mat_as_txt_file("Ev.txt",Ev);
-	//
+	//====================================================//
 	Mat cluster_centers_distance_mat = Mat::zeros(k,k, CV_32F);
 	for(int i=0;i<k;i++)
 	{
@@ -701,20 +705,26 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_w
 
 	int time_step_amount = histogram.rows;
 	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
-	for(int i=0;i<time_step_amount;i++)
-		for(int j=0;j<time_step_amount;j++)
-			for(int t=0;t<k;t++)
-			{
-				histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
-			}
 	//for(int i=0;i<time_step_amount;i++)
 	//	for(int j=0;j<time_step_amount;j++)
-	//		for(int t=0;t<cluster_centers.cols;t++)
+	//		for(int t=0;t<k;t++)
 	//		{
-	//			histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
+	//			histo_coeff.at<double>(i,j) += wi.at<float>(0,t)*abs(histogram.at<int>(i,t)-histogram.at<int>(j,t));
 	//		}
-	//histo_coeff.mul(1000);
-	output_mat_as_txt_file("histo_coeff.txt",histo_coeff);
+	//====================================================//
+	//CompareHist
+	Mat h1 = histogram.row(0);
+	Mat h2 = histogram.row(1);
+	//cout << "BHATTACHARYYA: " << compareHist(h1,h2,CV_COMP_BHATTACHARYYA) << endl;
+	//====================================================//
+	//GMM(Gaussian Mixutre Model)
+	for(int i=0;i<time_step_amount;i++)
+		for(int j=0;j<time_step_amount;j++)
+			for(int t=0;t<cluster_centers.cols;t++)
+			{
+				histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
+			}
+	//====================================================//
 	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
 	cv2eigen(histo_coeff,histo_coeff_EigenType);
 	TapkeeOutput output = tapkee::initialize() 
@@ -723,9 +733,9 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k,float larger_w
 	Mat MDS_mat; //Type:double  
 	eigen2cv(output.embedding,MDS_mat);
 	normalize(MDS_mat.col(0),MDS_mat.col(0),1,100,NORM_MINMAX);//normalize to 1~1000	
-	output_mat_as_txt_file("normalized_MDS_mat.txt",MDS_mat);
+	//output_mat_as_txt_file("normalized_MDS_mat.txt",MDS_mat);
 	MDS_mat = MDS_mat.mul(50);
-	output_mat_as_txt_file("normalized_MDS_mat_2.txt",MDS_mat);
+	//output_mat_as_txt_file("normalized_MDS_mat_2.txt",MDS_mat);
 
 	return MDS_mat; 
 }

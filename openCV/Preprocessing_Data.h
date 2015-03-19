@@ -28,6 +28,7 @@ private:
 	void output_mat_as_txt_file(char file_name[],Mat);
 	void output_mat_as_csv_file(char file_name[],Mat);
 	void output_mat_as_csv_file_int(char file_name[],Mat);
+	void output_mat_as_csv_file_double(char file_name[],Mat);
 	void calcCovMat(Mat&, Mat&, Mat&);
 	void reduceDimPCA(Mat&, int, Mat&, Mat&);
 	void read_raw_data();
@@ -49,7 +50,7 @@ private:
 	void gray2rgb(float,float& ,float& ,float&);
 	Mat normalize_column(Mat);
 	void sort_by_color(int, Mat&, Mat&, Mat&);
-	void sample_distance(Mat&);
+	void interpolate_distance(Mat&,int);
 public:
 	Preprocessing_Data();
 
