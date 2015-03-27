@@ -22,7 +22,7 @@ void Preprocessing_Data::start()
 	
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_2315_new.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -67,7 +67,9 @@ void Preprocessing_Data::start()
 	output_mat_as_csv_file_int("cluster_tag.csv",cluster_tag);
 	//==================================================//
 	voting(k,cluster_tag,model.rows); // Type: int	
-	cluster_tag.release();
+	////////////
+	//test(cluster_centers,model,cluster_tag);
+	///////////
 	//===================PCA RGB=======================//
 	Mat components, result;
 	int rDim = 3;
@@ -79,12 +81,23 @@ void Preprocessing_Data::start()
 	//for(int i=0;i<result.cols;i++)
 	//	normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
 	//output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
-	//===============Position (MDS)=====================//
+	//================voting result=====================//
 	clock_t begin5 = clock();
-	position = Position_by_MDS(cluster_centers,k).clone(); //Type:double
-	output_mat_as_csv_file_double("position.csv",position);
+	vector< vector<int> > voting_result(k);
+	for(int i=0;i<cluster_tag.rows;i++)
+	{
+		int c = cluster_tag.at<int>(i,0);
+		voting_result[c].push_back(i);
+	}
 	clock_t end5 = clock();
-	printf("MDS Position elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
+	printf("Voting Result elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
+	//===============Position (MDS)=====================//
+	clock_t begin6 = clock();
+	position = Position_by_MDS(cluster_centers,model,cluster_tag,voting_result,k).clone(); //Type:double
+	cluster_tag.release();
+	output_mat_as_csv_file_double("position.csv",position);
+	clock_t end6 = clock();
+	printf("MDS Position elapsed time: %f\n",double(end6 - begin6) / CLOCKS_PER_SEC);
 	cluster_centers.release();
 	//===================PCA raw data 3 dim=======================//
 	rDim = 1;
@@ -399,20 +412,7 @@ float Preprocessing_Data::DistanceOfLontitudeAndLatitude(float lat1,float lat2,f
 	float c = 2 * atan2((double)sqrt(a),(double)sqrt(1.0-a));
 	float d = R * c;
 
-	/*
-	if(d>20.0) 
-		return 0.0;
-	else if(d==0.0)
-		return 0.0;
-	else if(d<1e-5)
-		return 0.01;
-	else if(d>1e-5 && d<20.0)
-		return 0.1;
-	*/
-	if(d>1.0)
-		return 0.0;
-	else
-		return d;
+	return d;
 }
 
 float Preprocessing_Data::Log2( float n )  
@@ -574,7 +574,7 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 	}
 
 	output_mat_as_csv_file("first_order_distance_mat.csv",first_order_distance_mat.t());
-	interpolate_distance(first_order_distance_mat,1000);
+	interpolate_distance(first_order_distance_mat,2000);
 	output_mat_as_csv_file("first_order_distance_mat_sample.csv",first_order_distance_mat.t());
 
 	Mat first_order_distance_adjust_mat(1, raw_data.size(), CV_32F);
@@ -582,8 +582,10 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 	{
 		float d = first_order_distance_mat.at<float>(0,i);
 		float d1;
-		if(d==0.0 || d>0.045 || d<1.0e-4) 
+		if(d==0.0 || d<1.0e-4)
 			d1 = 0.0;
+		else if(d>0.05)
+			d1 = 0.05;
 		else if(d!=0.0)	
 		{
 			d1 = log(d);
@@ -591,6 +593,8 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 
 		first_order_distance_adjust_mat.at<float>(0,i) = d1;
 	}	
+
+	interpolate_distance(first_order_distance_adjust_mat,100);
 
 	output_mat_as_csv_file("first_order_distance_mat_log.csv",first_order_distance_adjust_mat.t());
 	double min, max;
@@ -715,7 +719,6 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 {
 	//GMM(Gaussian Mixutre Model)
 	int time_step_amount = floor(raw_data.size()/600.0);
-	//Mat Ev = Mat::zeros(time_step_amount,cluster_centers.cols,CV_32F);
 	for(int i=0;i<time_step_amount;i++)
 	{
 		float base = 0;
@@ -740,41 +743,329 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 	}
 }
 
-Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k)
+double Preprocessing_Data::mdg(Mat x,int d,Mat cov,Mat mean)
+{
+	double temp = pow(2.0*3.14,d/2.0) * sqrt( determinant(cov) );
+	double coeff;
+	if(temp==0)
+		coeff = 0.0;
+	else 
+		coeff = 1.0 / temp;
+	Mat result = -0.5*(x-mean)*cov.inv()*(x-mean).t();
+	//cout << "result: " << result.at<float>(0,0) << endl;
+	//cout << "coeff: " << coeff << endl;
+	//cout << "exp: " << exp( result.at<float>(0,0) ) << endl;
+	//cout << "ans: " << coeff*exp( result.at<float>(0,0) ) << endl;
+	return coeff*exp( result.at<float>(0,0) );
+}
+
+void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,Mat model,Mat cluster_tag,vector< vector<int> > voting_result)
+{
+	int k = cluster_centers.rows;
+	int raw_data_size = model.rows;
+	int five_minutes_amount = histogram.rows;
+	int dim = cluster_centers.cols;
+
+	class Hist{
+	public:
+		Mat cov;
+		Mat mean;
+		int num;
+	};
+	vector<Hist> hist(five_minutes_amount);
+
+
+	for(int i=0;i<hist.size();i++)
+	{
+		hist[i].mean = Mat::zeros(1,dim,CV_32F);
+		for(int j=0;j<k;j++)
+		{
+			hist[i].mean += histogram.at<int>(i,j)*cluster_centers.row(j);
+		}
+		hist[i].mean /= 600.0;
+	}
+
+	cout << "1 ";
+	for(int i=0;i<hist.size();i++)
+	{
+		hist[i].cov = Mat::zeros(dim,dim,CV_32F);
+		//for(int j=0;j<k;j++)
+		//{
+			for(int t=i*600;t<(i+1)*600;t++)
+			{
+				hist[i].cov += ( model.row(t) - hist[i].mean ).t() * ( model.row(t) - hist[i].mean );
+			}
+		//for(int j=0;j<k;j++)
+		//{
+		//	for(int t=0;t<histogram.at<int>(i,j);t++)
+		//	{
+		//		hist[i].cov += ( cluster_centers.row(j) - hist[i].mean ).t() * ( cluster_centers.row(j) - hist[i].mean );
+		//	}
+		//}
+
+		hist[i].cov /= 600.0;
+		//}
+	}
+
+	cout << "2 ";
+	double *mdg_value = new double[five_minutes_amount];
+	//Mat mdg_value = Mat::zeros(five_minutes_amount,k,CV_32F);
+	for(int index=0;index<five_minutes_amount;index++)
+	{
+		//mdg_value[index] = 0.0;
+		for(int i=0;i<k;i++)
+		{
+			double weight = histogram.at<int>(index,i)/600.0;
+			mdg_value[index] += weight * mdg(cluster_centers.row(i),dim,hist[index].cov,hist[index].mean);
+			//mdg_value.at<float>(index,i) =  weight * mdg(cluster_centers.row(i),dim,hist[index].cov,hist[index].mean);
+			//for(int j=0;j<voting_result[i].size();j++)
+			//{
+			//	mdg_value[index] += weight * mdg(model.row(voting_result[i][j]),dim,hist[index].cov,hist[index].mean);
+			//	//mdg_value[index] += weight * mdg(model.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+			//}
+		}
+
+		cout << "GMM: " << mdg_value[index]  << endl;
+	}
+	
+	//for(int i=0;i<five_minutes_amount;i++)
+	//{
+	//	double mdg_base = 0.0;
+	//	for(int j=0;j<k;j++)
+	//	{
+	//		for(int t=0;t<voting_result[j].size();t++)
+	//		{
+	//			 mdg_base += mdg(cluster_centers.row(j),dim,hist[i].cov,hist[i].mean);
+	//		}
+	//	}
+	//	mdg_base/=raw_data_size;
+	//	mdg_value[i]/=mdg_base;
+	//}
+
+	//association
+	float mdg_i,mdg_j;
+	Mat mdg_association = Mat::zeros(five_minutes_amount,five_minutes_amount,CV_32F);
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=0;j<five_minutes_amount;j++)
+		{
+			//mdg_association.at<float>(i,j) = 0.0;
+			mdg_i = mdg_j = 0.0;
+			if(i==j) continue;
+			for(int t=0;t<k;t++)
+			{
+				int votes_i = histogram.at<int>(i,t);
+				int votes_j = histogram.at<int>(j,t);
+				float weight = (votes_i+votes_j)/1200.0;
+				mdg_i += weight * mdg(cluster_centers.row(t),dim,hist[i].cov,hist[i].mean);
+				mdg_j += weight * mdg(cluster_centers.row(t),dim,hist[j].cov,hist[j].mean);
+			}
+			histo_coeff.at<double>(i,j) = sqrt( mdg_value[i]/mdg_i * mdg_value[j]/mdg_j );
+		}
+	}
+
+	//for(int i=0;i<five_minutes_amount;i++)
+	//{
+	//	for(int j=0;j<five_minutes_amount;j++)
+	//	{
+	//		for(int t=0;t<k;t++)
+	//		{
+	//			histo_coeff.at<double>(i,j) += abs( mdg_value.at<float>(i,t) - mdg_value.at<float>(j,t) );
+	//		}
+	//	}
+	//}
+
+	//for(int i=0;i<five_minutes_amount;i++)
+	//{
+	//	for(int j=0;j<five_minutes_amount;j++)
+	//	{
+	//		//histo_coeff.at<double>(i,j) += abs(mdg_value[i] - mdg_value[j]);
+	//		histo_coeff.at<double>(i,j) += sqrt(mdg_value[i] * mdg_value[j]);
+	//		//histo_coeff.at<double>(i,j) = mdg_association.at<float>(i,j);
+	//	}
+	//}
+
+	delete [] mdg_value;
+
+	output_mat_as_csv_file_double("histo_coeff.csv",histo_coeff);
+	
+}
+
+void Preprocessing_Data::distance_by_mdg(Mat& histo_coeff,Mat cluster_centers,Mat model,Mat cluster_tag,vector< vector<int> > voting_result)
+{
+	int k = cluster_centers.rows;
+	int raw_data_size = model.rows;
+
+	class cluster{
+	public: 
+		Mat cov;	
+		int num;
+	};
+	vector<cluster> c_list(k);
+	for(int i=0;i<k;i++)
+	{
+		c_list[i].cov = Mat::zeros(cluster_centers.cols, cluster_centers.cols, CV_32F);
+		c_list[i].num = 0;
+	}
+
+	// 計算資料點的重心(平均)
+	Mat mean = Mat::zeros(1, cluster_centers.cols, CV_32F);
+
+	// 計算covariance matrix
+	for (int i=0;i<k;i++){
+		mean = cluster_centers.row(i);
+		for(int j=0;j<voting_result[i].size();j++)
+		{
+			int index = voting_result[i][j];
+			c_list[i].cov += ( model.row(index) - mean).t() * ( model.row(index) - mean );
+			c_list[i].num++;
+		}
+	}
+
+	for(int i=0;i<k;i++)
+	{
+		c_list[i].cov /= double(c_list[i].num);
+	}
+	
+	//GMM for association of every 5 minutes
+	//double *mdg_base = new double[histogram.rows];
+	//for(int index=0;index<histogram.rows;index++)
+	//{
+	//	mdg_base[index] = 0.0;
+	//	for(int i=0;i<k;i++)
+	//	{
+	//		float weight = (float)voting_result[i].size()/(float)raw_data_size;
+	//		for(int j=0;j<voting_result[i].size();j++)
+	//		{
+	//			mdg_base[index] += weight * mdg(cluster_centers.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+	//		}
+	//	}
+	//}
+
+	//Multivariate Gaussian Distribution
+	//mdg_value[index]:GMM for every 5 minutes
+	
+	//double *mdg_value = new double[histogram.rows];
+	//for(int index=0;index<histogram.rows;index++)
+	//{
+	//	mdg_value[index] = 0.0;
+	//	for(int i=0;i<k;i++)
+	//	{
+	//		float weight = histogram.at<int>(index,i)/600.0;
+	//		//mdg_value[index] += weight * mdg(cluster_centers.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+	//		for(int j=0;j<voting_result[i].size();j++)
+	//		{
+	//			mdg_value[index] += weight * mdg(model.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+	//		}
+	//	}
+	//	//cout << "GMM: " << mdg_value[index]  << endl;
+	//}
+	
+	Mat mdg_value = Mat::zeros(histogram.rows,k,CV_32F);
+	for(int index=0;index<histogram.rows;index++)
+	{
+		//mdg_value[index] = 0.0;
+		for(int i=0;i<k;i++)
+		{
+			float weight = histogram.at<int>(index,i)/600.0;
+			mdg_value.at<float>(index,i) = weight * mdg(cluster_centers.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+			//mdg_value[index] += weight * mdg(cluster_centers.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+			//for(int j=0;j<voting_result[i].size();j++)
+			//{
+			//	mdg_value[index] += weight * mdg(model.row(i),model.cols,c_list[i].cov,cluster_centers.row(i));
+			//}
+		}
+		//cout << "GMM: " << mdg_value[index]  << endl;
+	}
+
+	//Mat mdg_value = Mat::zeros(histogram.rows,histogram.rows,CV_64F);
+	//for(int i=0;i<histogram.rows;i++)
+	//{
+	//	for(int j=0;j,histogram.rows;j++)
+	//	{	
+	//		mdg_value.at<double>(i,j) = 0.0;
+	//		if(i==j)
+	//		{	
+	//			continue;
+	//		}
+	//		double mdg_i,mdg_j;
+	//		mdg_i = mdg_j = 0.0;
+	//		for(int t=0;t<k;t++)
+	//		{
+	//			double wi = histogram.at<int>(i,t)/600.0;
+	//			double wj = histogram.at<int>(j,t)/600.0;
+	//			double joint_votes = (histogram.at<int>(i,t) + histogram.at<int>(j,t))/1200.0;
+	//			mdg_i += wi*mdg(cluster_centers.row(t),model.cols,c_list[t].cov,cluster_centers.row(t));				
+	//			mdg_j += wj*mdg(cluster_centers.row(t),model.cols,c_list[t].cov,cluster_centers.row(t));	
+	//		}
+	//	}
+	//}
+
+	
+	int time_step_amount = floor(raw_data.size()/600.0);
+	for(int i=0;i<time_step_amount;i++)
+	{
+		for(int j=0;j<time_step_amount;j++)
+		{
+			for(int t=0;t<k;t++)
+			{
+				//histo_coeff.at<double>(i,j) += abs( mdg_value.at<float>(i,t) - mdg_value.at<float>(j,t) );
+				histo_coeff.at<double>(i,j) += sqrt( mdg_value.at<float>(i,t)*mdg_value.at<float>(j,t) );
+			}
+		}
+	}
+	//for(int i=0;i<time_step_amount;i++)
+	//{
+	//	for(int j=0;j<time_step_amount;j++)
+	//	{
+	//		//histo_coeff.at<double>(i,j) += abs(mdg_value[i] - mdg_value[j]);
+	//		histo_coeff.at<double>(i,j) += sqrt(mdg_value[i] * mdg_value[j]);
+	//	}
+	//}
+
+	//delete [] mdg_value;
+	output_mat_as_csv_file_double("histo_coeff.csv",histo_coeff);
+
+}
+
+Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,Mat model,Mat cluster_tag,vector< vector<int> >voting_result,int k)
 {
 	int time_step_amount = floor(raw_data.size()/600.0);
 	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
 
 	//==================GMM(Gaussian Mixture Model)======================//
-	Mat Ev = Mat::zeros(time_step_amount,cluster_centers.cols,CV_32F);
-	distance_by_GMM(histo_coeff,Ev,cluster_centers,k);
+	//Mat Ev = Mat::zeros(time_step_amount,cluster_centers.cols,CV_32F);
+	//distance_by_GMM(histo_coeff,Ev,cluster_centers,k);
 	//========Euclidean Distance + weighting by cluster distance========//
 	//distance_by_Euclidean(histo_coeff,cluster_centers,k);
 
+	//================Multivariate Gaussian Distribution================// 
+	distance_by_mdg2(histo_coeff,cluster_centers,model,cluster_tag,voting_result);
+
 	//CompareHist
-	char* testArr1 = new char[k];
-	char *testArr2 = new char[k];
-	for(int i=0;i<k;i++) testArr1[i] = histogram.at<int>(50,i);
-	for(int i=0;i<k;i++) testArr2[i] = histogram.at<int>(100,i);
-	//char testArr1[] = {4,23,0,12,0,0,0,0,1,0,0,0,201,35,0,52,50,14,66,47,67,0,6,22,0};
-	//char testArr2[] = {57,51,66,22,0,0,4,0,0,0,1,0,0,1,0,0,1,11,15,7,48,102,0,5,209};
-	Mat M1 = Mat(1,k,CV_8UC1,testArr1);
-	Mat M2 = Mat(1,k,CV_8UC1,testArr2);
-	//M1 = histogram.row(0);
-	//M2 = histogram.row(1);
+	//char* testArr1 = new char[k];
+	//char *testArr2 = new char[k];
+	//for(int i=0;i<k;i++) testArr1[i] = histogram.at<int>(50,i);
+	//for(int i=0;i<k;i++) testArr2[i] = histogram.at<int>(100,i);
+	////char testArr1[] = {4,23,0,12,0,0,0,0,1,0,0,0,201,35,0,52,50,14,66,47,67,0,6,22,0};
+	////char testArr2[] = {57,51,66,22,0,0,4,0,0,0,1,0,0,1,0,0,1,11,15,7,48,102,0,5,209};
+	//Mat M1 = Mat(1,k,CV_8UC1,testArr1);
+	//Mat M2 = Mat(1,k,CV_8UC1,testArr2);
+	////M1 = histogram.row(0);
+	////M2 = histogram.row(1);
 
-	int histSize = k;
-	float range[] = {0, 600};
-	const float* histRange = {range};
-	bool uniform = true;
-	bool accumulate = false;
-	Mat a1_hist, a2_hist;
+	//int histSize = k;
+	//float range[] = {0, 600};
+	//const float* histRange = {range};
+	//bool uniform = true;
+	//bool accumulate = false;
+	//Mat a1_hist, a2_hist;
 
-	calcHist(&M1, 1, 0, cv::Mat(), a1_hist, 1, &histSize, &histRange, uniform, accumulate );
-	calcHist(&M2, 1, 0, cv::Mat(), a2_hist, 1, &histSize, &histRange, uniform, accumulate );
-	double compar_bh = compareHist(a1_hist, a2_hist, CV_COMP_BHATTACHARYYA);
-	cout << compar_bh << endl;
-
+	//calcHist(&M1, 1, 0, cv::Mat(), a1_hist, 1, &histSize, &histRange, uniform, accumulate );
+	//calcHist(&M2, 1, 0, cv::Mat(), a2_hist, 1, &histSize, &histRange, uniform, accumulate );
+	//double compar_bh = compareHist(a1_hist, a2_hist, CV_COMP_BHATTACHARYYA);
+	//cout << compar_bh << endl;
+	//==========================================================================//
 
 	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
 	cv2eigen(histo_coeff,histo_coeff_EigenType);
@@ -785,7 +1076,7 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,int k)
 	eigen2cv(output.embedding,MDS_mat);
 	normalize(MDS_mat.col(0),MDS_mat.col(0),1,100,NORM_MINMAX);//normalize to 1~1000	
 	//output_mat_as_txt_file("normalized_MDS_mat.txt",MDS_mat);
-	MDS_mat = MDS_mat.mul(50);
+	MDS_mat = MDS_mat.mul(50.0);
 	//output_mat_as_txt_file("normalized_MDS_mat_2.txt",MDS_mat);
 
 	return MDS_mat; 

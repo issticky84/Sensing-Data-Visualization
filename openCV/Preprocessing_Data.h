@@ -39,7 +39,7 @@ private:
 	Mat Gaussian_filter(int attribute_title[]);
 	Mat set_matrix(int attribute_title[],int);
 	void voting(int,Mat,int);
-	Mat Position_by_MDS(Mat,int);
+	Mat Position_by_MDS(Mat,Mat,Mat,vector< vector<int> >,int);
 	Mat lab_alignment(Mat);
 	Mat lab_alignment_dim1(Mat);
 	Mat lab_alignment_dim2(Mat);
@@ -53,7 +53,11 @@ private:
 	void interpolate_distance(Mat&,int);
 	void distance_by_GMM(Mat&,Mat&,Mat,int);
 	void distance_by_Euclidean(Mat&,Mat,int);
+	void distance_by_mdg(Mat&,Mat,Mat,Mat,vector< vector<int> >);
+	void distance_by_mdg2(Mat&,Mat,Mat,Mat,vector< vector<int> >);
 	float Log2(float); 
+	double mdg(Mat,int,Mat,Mat);
+	//vector< vector<int> > voting_result;
 public:
 	Preprocessing_Data();
 
