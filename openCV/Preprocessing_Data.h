@@ -55,9 +55,11 @@ private:
 	void distance_by_Euclidean(Mat&,Mat,int);
 	void distance_by_mdg(Mat&,Mat,Mat,Mat,vector< vector<int> >);
 	void distance_by_mdg2(Mat&,Mat,Mat,Mat,vector< vector<int> >);
+	void distance_by_mdg3(Mat&,Mat,Mat,Mat,vector< vector<int> >);
 	float Log2(float); 
 	double mdg(Mat,int,Mat,Mat);
-	//vector< vector<int> > voting_result;
+	void interpolate_latlon(Mat&,int);
+
 public:
 	Preprocessing_Data();
 
