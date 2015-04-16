@@ -19,10 +19,9 @@ Preprocessing_Data::Preprocessing_Data()
 
 void Preprocessing_Data::start()
 {
-	
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20150104_2314_new.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -52,9 +51,13 @@ void Preprocessing_Data::start()
     //TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 1),  硂柑Τ把计∕﹚k-means挡材把计琌程Ω计材把计琌弘絋ぶ材把计琌ㄌ酚玡ㄢ把计非絛ㄒい碞琌ㄢ常把酚 or よΑ∕﹚
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	//=================LAB alignment====================//
-	if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment(cluster_centers);
+	clock_t begin5 = clock();
+	//if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment(cluster_centers);
+	if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment_new(cluster_centers);
 	else if(cluster_centers.cols==1) rgb_mat2 = lab_alignment_dim1(cluster_centers);
 	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
+	clock_t end5 = clock();
+	printf("\nLAB alignment elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
 	//==================================================//
 	//sort the cluster by color and generate new cluster tag and cluster center
@@ -62,11 +65,13 @@ void Preprocessing_Data::start()
 	sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
 	clock_t end4 = clock();
 	printf("\nSort by Color elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
+
 	output_mat_as_csv_file("lab_mat2.csv",rgb_mat2);
 	output_mat_as_csv_file("cluster_center.csv",cluster_centers);
 	output_mat_as_csv_file_int("cluster_tag.csv",cluster_tag);
 	//==================================================//
 	voting(k,cluster_tag,model.rows); // Type: int	
+	//adjust_histogram(cluster_centers,cluster_tag,model);
 	////////////
 	//test(cluster_centers,model,cluster_tag);
 	///////////
@@ -82,18 +87,18 @@ void Preprocessing_Data::start()
 	//	normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
 	//output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//================voting result=====================//
-	clock_t begin5 = clock();
-	vector< vector<int> > voting_result(k);
-	for(int i=0;i<cluster_tag.rows;i++)
-	{
-		int c = cluster_tag.at<int>(i,0);
-		voting_result[c].push_back(i);
-	}
-	clock_t end5 = clock();
-	printf("Voting Result elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
+	//clock_t begin5 = clock();
+	//vector< vector<int> > voting_result(k);
+	//for(int i=0;i<cluster_tag.rows;i++)
+	//{
+	//	int c = cluster_tag.at<int>(i,0);
+	//	voting_result[c].push_back(i);
+	//}
+	//clock_t end5 = clock();
+	//printf("Voting Result elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	//===============Position (MDS)=====================//
 	clock_t begin6 = clock();
-	position = Position_by_MDS(cluster_centers,model,cluster_tag,voting_result,k).clone(); //Type:double
+	position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
 	cluster_tag.release();
 	output_mat_as_csv_file_double("position.csv",position);
 	clock_t end6 = clock();
@@ -137,19 +142,36 @@ void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers,
 	public:
 		int key;
 		vector<float> rgb_vec;
-		Mat _cluster_center_1D;
+		Mat lab;
+		Mat lab_1D;
 		
-		cluster_info(int k,vector<float> rgb,Mat cluster_center_1D){
+		cluster_info(int k,vector<float> rgb,Mat lab_mat,Mat lab_1D_mat){
 			key = k;
 			rgb_vec = rgb;
-			_cluster_center_1D = cluster_center_1D;
+			lab = lab_mat.clone();
+			lab_1D = lab_1D_mat.clone();
 		} 
 	};
 	class sort_by_rgb{
 	public:
 		inline bool operator() (cluster_info& c1, cluster_info& c2)
 		{
-			
+			/*
+			float lab_1D_c1 = c1.lab_1D.at<double>(0,0);
+			float lab_1D_c2 = c2.lab_1D.at<double>(0,0);
+			return (lab_1D_c1 < lab_1D_c2);
+			*/
+			/*
+			float L1 = c1.lab.at<float>(0,0);
+			float A1 = c1.lab.at<float>(0,1);
+			float B1 = c1.lab.at<float>(0,2);
+			float L2 = c2.lab.at<float>(0,0);
+			float A2 = c2.lab.at<float>(0,1);
+			float B2 = c2.lab.at<float>(0,2);
+			return (A1<A2 || (A1==A2 && B1>B2) || (A1==A2 && B1==B2 && L1>L2) );
+			return (L1<L2 || (L1==L2 && A1>A2) || (L1==L2 && A1==A2 && B1>B2) );
+			*/
+
 			float R1 = c1.rgb_vec[0];
 			float G1 = c1.rgb_vec[1];
 			float B1 = c1.rgb_vec[2];
@@ -177,22 +199,37 @@ void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers,
 		}
 	};
 
-	Mat components,cluster_centers_1D; 
-	reduceDimPCA(cluster_centers, 1, components, cluster_centers_1D);
+
+	Mat lab_dist = Mat::zeros(lab.rows,lab.rows,CV_64F);
+	for(int i=0;i<lab_dist.rows;i++)
+	{
+		for(int j=0;j<lab_dist.rows;j++)
+		{
+			for(int t=0;t<3;t++)
+			{
+				///////////////////////////////////////////////
+				lab_dist.at<double>(i,j) += abs( lab.at<float>(i,t) - lab.at<float>(j,t) );
+			}
+		}
+	}
+
+	output_mat_as_csv_file_double("lab_dist.csv",lab_dist);
+	Mat lab_1D = MDS(lab_dist,1).clone();
+	output_mat_as_csv_file_double("lab_1D.csv",lab_1D);
 
 	vector< cluster_info > cluster_vec;
 	for(int i=0;i<k;i++)
 	{
-		cluster_vec.push_back( cluster_info(i,rgb_vector[i],cluster_centers_1D.row(i) ) );
+		cluster_vec.push_back( cluster_info( i,rgb_vector[i],lab.row(i),lab_1D.row(i) ) );
 	}
 
 	sort(cluster_vec.begin(), cluster_vec.end(), sort_by_rgb());
 
 	
-	for(int i=0;i<cluster_vec.size();i++)
-	{
-		cout << cluster_vec[i].key << " ";
-	}
+	//for(int i=0;i<cluster_vec.size();i++)
+	//{
+	//	cout << cluster_vec[i].key << " ";
+	//}
 	
 	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
 	output_mat_as_csv_file_int("cluster_tag_old.csv",cluster_tag);
@@ -331,6 +368,7 @@ void Preprocessing_Data::reduceDimPCA(Mat& data, int rDim, Mat& components, Mat&
 			// ず縩(щ紇principal component)
 			// http://docs.opencv.org/modules/core/doc/basic_structures.html?highlight=dot#mat-dot
 			result.at<float>(i, j) = (data.row(i) - mean).dot(components.row(j));
+			//result:材i戈翴材j玒计cj
 		}
 	}
 }
@@ -593,8 +631,8 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 		}
 	}
 
-	//output_mat_as_csv_file("first_order_distance_mat.csv",first_order_distance_mat.t());
-	interpolate_distance(first_order_distance_mat,2000);
+	output_mat_as_csv_file("first_order_distance_mat.csv",first_order_distance_mat.t());
+	interpolate_distance(first_order_distance_mat,3000);
 	output_mat_as_csv_file("first_order_distance_mat_interpolation.csv",first_order_distance_mat.t());
 
 	Mat first_order_distance_adjust_mat(1, raw_data.size(), CV_32F);
@@ -765,10 +803,10 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 		float base = 0;
 		for(int j=0;j<k;j++)
 		{
-			Ev.row(i) += histogram.at<int>(i,j)*cluster_centers.row(j);
-			base += histogram.at<int>(i,j);
+			//Ev.row(i) += adjust_weight[i][j]*cluster_centers.row(j);
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_centers.row(j);
 		}
-		Ev.row(i)/=base;
+		//Ev.row(i)/=600;
 	}
 	output_mat_as_csv_file("Ev.csv",Ev);	
 
@@ -776,10 +814,19 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 	{
 		for(int j=0;j<time_step_amount;j++)
 		{
-			for(int t=0;t<cluster_centers.cols;t++)
+			if(i==j) continue;
+			else if(i>j)
 			{
-				histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
-				//histo_coeff.at<double>(i,j) += sqrt( Ev.at<float>(i,t) * Ev.at<float>(j,t) );
+				histo_coeff.at<double>(i,j) = histo_coeff.at<double>(j,i);
+			}
+			else
+			{
+				for(int t=0;t<cluster_centers.cols;t++)
+				{
+					histo_coeff.at<double>(i,j) += abs(Ev.at<float>(i,t)-Ev.at<float>(j,t));
+					//histo_coeff.at<double>(i,j) += sqrt( Ev.at<float>(i,t) * Ev.at<float>(j,t) );
+				}
+				//histo_coeff.at<double>(i,j) = sqrt( 1.0 - histo_coeff.at<double>(i,j) );
 			}
 		}
 	}
@@ -787,18 +834,122 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 
 double Preprocessing_Data::mdg(Mat x,int d,Mat cov,Mat mean)
 {
-	double temp = pow(2.0*3.14,d/2.0) * sqrt( determinant(cov) );
+	//cout << x << endl << cov << endl << mean << endl;
+
+	//ňゎsqrt(璽计)=NaN
+	double temp = sqrt( pow(2.0*3.14,d) * determinant(cov) );
+	Mat eigen_value,eigen_vector;
+	eigen(cov,eigen_value,eigen_vector);
+
 	double coeff;
-	if(temp==0)
-		coeff = 0.0;
+	if(temp==0) //ňゎ埃0
+		coeff = 0;
 	else 
 		coeff = 1.0 / temp;
+
+	/*
+	Mat diff;
+	//absdiff(diff,x,mean);
+	compare(x,mean,diff,CMP_EQ);
+	bool same = true;
+	for(int i=0;i<diff.rows;i++)
+	{
+		for(int j=0;j<diff.cols;j++)
+		{
+			//cout << diff.at<int>(i,j) << endl; system("pause");
+			if(diff.at<float>(i,j) != 1)
+				same = false;
+		}
+	}
+	//if(same==true) result = 
+	*/
 	Mat result = -0.5*(x-mean)*cov.inv()*(x-mean).t();
+	//cout << "temp: " << temp << endl;
 	//cout << "result: " << result.at<float>(0,0) << endl;
 	//cout << "coeff: " << coeff << endl;
 	//cout << "exp: " << exp( result.at<float>(0,0) ) << endl;
 	//cout << "ans: " << coeff*exp( result.at<float>(0,0) ) << endl;
+	//system("pause");
+
+	//return exp( result.at<float>(0,0) );
 	return coeff*exp( result.at<float>(0,0) );
+}
+
+void Preprocessing_Data::adjust_histogram(Mat cluster_centers,Mat cluster_tag,Mat model)
+{
+	int k = cluster_centers.rows;
+	int dim = cluster_centers.cols;
+	int raw_size = cluster_tag.rows;
+	Mat mean = cluster_centers.clone();
+	int five_minutes_amount = histogram.rows;
+	//Mat cov = Mat::zeros(dim,dim,CV_32F);
+	class cluster
+	{
+	public:
+		Mat cov;
+		int num;
+	};
+	vector<cluster> c_list;
+	c_list.resize(k);
+
+	for(int i=0;i<c_list.size();i++)
+	{
+		c_list[i].cov = Mat::zeros(dim,dim,CV_32F);
+		c_list[i].num = 0;
+	}
+
+	for(int i=0;i<raw_size;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		c_list[tag].cov += ( model.row(i)-mean.row(tag) ).t() *( model.row(i)-mean.row(tag) );
+		c_list[tag].num++;
+	}
+
+	for(int i=0;i<k;i++)
+	{
+		c_list[i].cov /= c_list[i].num;
+	}
+	
+	//Mat new_weight = Mat::zeros(k,1,CV_32F);
+	float** new_weight = new float*[five_minutes_amount];
+	for(int i=0;i<five_minutes_amount;i++) new_weight[i] = new float[k];
+	for(int i=0;i<five_minutes_amount;i++) 
+		for(int j=0;j<k;j++)
+			new_weight[i][j] = 0.0;
+
+	float* total_weight = new float[five_minutes_amount];
+
+	//for(int i=0;i<five_minutes_amount;i++)
+	//{
+	//	for(int j=0;j<k;j++)
+	//	{
+	//		for(int t=0;t<k;t++)
+	//		{
+	//			new_weight[i][j] += (float)histogram.at<int>(i,t)/600.0 * mdg(cluster_centers.row(j),dim,c_list[t].cov,mean.row(t));	
+	//			total_weight[i] += new_weight[i][j];
+	//		}
+	//	}
+	//}
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=i*600;j<(i+1)*600;j++)
+		{
+			int t = cluster_tag.at<int>(j,0);
+			new_weight[i][t] += mdg(model.row(j),dim,c_list[t].cov,mean.row(t));
+			total_weight[i] += new_weight[i][t];
+		}
+	}
+
+	adjust_weight = new float*[five_minutes_amount];
+	for(int i=0;i<five_minutes_amount;i++) adjust_weight[i] = new float[k];
+
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			adjust_weight[i][j] = new_weight[i][j]/total_weight[i];
+		}
+	}
 }
 
 void Preprocessing_Data::distance_by_mdg3(Mat& histo_coeff,Mat cluster_centers,Mat model,Mat cluster_tag,vector< vector<int> > voting_result)
@@ -813,8 +964,21 @@ void Preprocessing_Data::distance_by_mdg3(Mat& histo_coeff,Mat cluster_centers,M
 	class Hist{
 	public:	
 		Mat* cov;
+		//Mat mean;
 	};
 	vector<Hist> hist(five_minutes_amount);
+	
+	/*
+	for(int i=0;i<hist.size();i++)
+	{
+		hist[i].mean = Mat::zeros(1,dim,CV_32F);
+		for(int j=0;j<k;j++)
+		{
+			hist[i].mean += histogram.at<int>(i,j)*cluster_centers.row(j);
+		}
+		hist[i].mean /= 600.0;
+	}
+	*/
 
 	//allocate covariance mat
 	for(int i=0;i<hist.size();i++)
@@ -835,7 +999,66 @@ void Preprocessing_Data::distance_by_mdg3(Mat& histo_coeff,Mat cluster_centers,M
 			hist[i].cov[j] /= histogram.at<int>(i,j);
 	}
 
-	////
+	double *mdg_value = new double[five_minutes_amount];
+	for(int index=0;index<five_minutes_amount;index++)
+	{
+		mdg_value[index] = 0.0;
+		
+		//for(int i=0;i<k;i++)
+		//{
+		//	double weight = histogram.at<int>(index,i)/600.0;
+		//	if(weight!=0)
+		//	{
+		//		mdg_value[index] += weight * mdg(cluster_centers.row(i),dim,hist[index].cov[i],mean.row(i));	
+		//		cout << cluster_centers.row(i) << endl << hist[index].cov[i] << endl << mean.row(i) << endl;
+		//		cout <<  mdg(cluster_centers.row(i),dim,hist[index].cov[i],mean.row(i)) << endl;
+		//		system("pause");
+		//	}
+		//}
+		
+		for(int t=index*600;t<(index+1)*600;t++)
+		{
+			int tag = cluster_tag.at<int>(t,0);
+			mdg_value[index] += mdg(model.row(t),dim,hist[index].cov[tag],mean.row(tag));
+		}
+		
+		cout << "GMM: " << mdg_value[index]  << endl;
+	}
+
+	//association
+	float mdg_i,mdg_j;
+	Mat mdg_association = Mat::zeros(five_minutes_amount,five_minutes_amount,CV_32F);
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=0;j<five_minutes_amount;j++)
+		{
+			if(i==j) continue;
+			else if(i>j)//speed up to avoid duplicate computation
+			{
+				histo_coeff.at<double>(i,j)  = histo_coeff.at<double>(j,i);
+			}
+			else
+			{
+				mdg_i = mdg_j = 0.0;
+				for(int t=0;t<k;t++)
+				{
+					int votes_i = histogram.at<int>(i,t);
+					int votes_j = histogram.at<int>(j,t);
+					float weight = (votes_i+votes_j)/1200.0;
+					if(weight!=0)
+					{
+						mdg_i += weight * mdg(cluster_centers.row(t),dim,hist[i].cov[t],mean.row(i));
+						mdg_j += weight * mdg(cluster_centers.row(t),dim,hist[j].cov[t],mean.row(j));
+					}
+				}
+
+				//histo_coeff.at<double>(i,j) = -log( sqrt( (mdg_value[i]/mdg_i) * (mdg_value[j]/mdg_j) ) );
+				histo_coeff.at<double>(i,j) = sqrt( (mdg_value[i]/mdg_i) * (mdg_value[j]/mdg_j) );
+			}
+		}
+	}
+	/*
+	////////////////////
 	float sum_GMM1,sum_GMM2;
 	//float* sum_GMM;
 	//sum_GMM = new float[hist.size()];
@@ -894,6 +1117,7 @@ void Preprocessing_Data::distance_by_mdg3(Mat& histo_coeff,Mat cluster_centers,M
 		}
 	}
 	cout << "2";
+	*/
 }
 
 
@@ -929,12 +1153,16 @@ void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,M
 	for(int i=0;i<hist.size();i++)
 	{
 		hist[i].cov = Mat::zeros(dim,dim,CV_32F);
-		//for(int j=0;j<k;j++)
+
+		for(int t=i*600;t<(i+1)*600;t++)
+		{
+			hist[i].cov += ( model.row(t) - hist[i].mean ).t() * ( model.row(t) - hist[i].mean );
+		}
+		//for(int t=i*600;t<(i+1)*600;t++)
 		//{
-			for(int t=i*600;t<(i+1)*600;t++)
-			{
-				hist[i].cov += ( model.row(t) - hist[i].mean ).t() * ( model.row(t) - hist[i].mean );
-			}
+		//	int tag = cluster_tag.at<int>(t,0);
+		//	hist[i].cov += ( cluster_centers.row(tag) - hist[i].mean ).t() * ( cluster_centers.row(tag) - hist[i].mean );
+		//}
 		//for(int j=0;j<k;j++)
 		//{
 		//	for(int t=0;t<histogram.at<int>(i,j);t++)
@@ -944,7 +1172,7 @@ void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,M
 		//}
 
 		hist[i].cov /= 600.0;
-		//}
+		
 	}
 
 	double *mdg_value = new double[five_minutes_amount];
@@ -959,13 +1187,13 @@ void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,M
 				mdg_value[index] += weight * mdg(cluster_centers.row(i),dim,hist[index].cov,hist[index].mean);	
 			}
 		}
-		/*
-		for(int t=index*600;t<(index+1)*600;t++)
-		{
-			mdg_value[index] += mdg(model.row(cluster_tag.at<int>(t,0)),dim,hist[index].cov,hist[index].mean);
-		}
-		*/
-		cout << "GMM: " << mdg_value[index]  << endl;
+		
+		
+		//for(int t=index*600;t<(index+1)*600;t++)
+		//{
+		//	mdg_value[index] += mdg(model.row(t),dim,hist[index].cov,hist[index].mean);
+		//}		
+		//cout << "GMM: " << mdg_value[index]  << endl;
 	}
 	
 	//for(int i=0;i<five_minutes_amount;i++)
@@ -982,8 +1210,8 @@ void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,M
 	//	mdg_value[i]/=mdg_base;
 	//}
 
-	//association
-	float mdg_i,mdg_j;
+	//=======================association=======================//
+	double mdg_i,mdg_j;
 	Mat mdg_association = Mat::zeros(five_minutes_amount,five_minutes_amount,CV_32F);
 	for(int i=0;i<five_minutes_amount;i++)
 	{
@@ -1009,11 +1237,54 @@ void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,M
 					}
 				}
 
+				//double dist = 0.0;
+				//if(mdg_i==0) mdg_i = e-5;
+				//if(mdg_j==0) mdg_j = e-5;
+				//if(mdg_i==0 && mdg_j!=0)
+				//	dist = sqrt( (mdg_value[j]/mdg_j) );
+				//else if(mdg_i!=0 && mdg_j==0)
+				//	dist = sqrt((mdg_value[i]/mdg_i));
+				//else if(mdg_i!=0 || mdg_j!=0)
+				//histo_coeff.at<double>(i,j) = -log( sqrt( (mdg_value[i]/mdg_i) * (mdg_value[j]/mdg_j) ) );
+				//histo_coeff.at<double>(i,j) = sqrt( (mdg_value[i]/mdg_i) * (mdg_value[j]/mdg_j) );
+				
+			}
+		}
+	}
+	//=========================================================//
+	/*
+	float mdg_i,mdg_j;
+	Mat mdg_association = Mat::zeros(five_minutes_amount,five_minutes_amount,CV_32F);
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=0;j<five_minutes_amount;j++)
+		{
+			if(i==j) continue;
+			else if(i>j)//speed up to avoid duplicate computation
+			{
+				histo_coeff.at<double>(i,j)  = histo_coeff.at<double>(j,i);
+			}
+			else
+			{
+				mdg_i = mdg_j = 0.0;
+				for(int t=i*600;t<(i+1)*600;t++)
+				{
+					mdg_i += mdg(model.row(t),dim,hist[i].cov,hist[i].mean);
+					mdg_j += mdg(model.row(t),dim,hist[j].cov,hist[j].mean);
+				}
+				for(int t=j*600;t<(j+1)*600;t++)
+				{
+					mdg_i += mdg(model.row(t),dim,hist[i].cov,hist[i].mean);
+					mdg_j += mdg(model.row(t),dim,hist[j].cov,hist[j].mean);
+				}
+
 				//histo_coeff.at<double>(i,j) = -log( sqrt( (mdg_value[i]/mdg_i) * (mdg_value[j]/mdg_j) ) );
 				histo_coeff.at<double>(i,j) = sqrt( (mdg_value[i]/mdg_i) * (mdg_value[j]/mdg_j) );
 			}
 		}
-	}
+	}*/
+
+
 
 	//double min,max;
 	//minMaxLoc(histo_coeff, &min, &max);
@@ -1041,9 +1312,19 @@ void Preprocessing_Data::distance_by_mdg2(Mat& histo_coeff,Mat cluster_centers,M
 	//	}
 	//}
 
-	delete [] mdg_value;
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=0;j<five_minutes_amount;j++)
+		{
+			Mat cov_avg = (hist[i].cov + hist[j].cov)/2.0;
+			Mat DB = Mat::zeros(1,1,CV_32F);
+			DB = 0.125 * (hist[i].mean-hist[j].mean) * cov_avg * (hist[i].mean-hist[j].mean).t() 
+				+ 0.5 * log( determinant(cov_avg) / sqrt( determinant(hist[i].cov) * determinant(hist[j].cov) ) );
+			histo_coeff.at<double>(i,j) = DB.at<float>(0,0);
+		}
+	}
 
-	output_mat_as_csv_file_double("histo_coeff.csv",histo_coeff);
+	delete [] mdg_value;
 	
 }
 
@@ -1172,7 +1453,7 @@ void Preprocessing_Data::distance_by_mdg(Mat& histo_coeff,Mat cluster_centers,Ma
 				//histo_coeff.at<double>(i,j) += abs( mdg_value.at<float>(i,t) - mdg_value.at<float>(j,t) );
 				histo_coeff.at<double>(i,j) += sqrt( mdg_value.at<float>(i,t)*mdg_value.at<float>(j,t) );
 			}
-			histo_coeff.at<double>(i,j) = 1.0 - histo_coeff.at<double>(i,j);
+			//histo_coeff.at<double>(i,j) = 1.0 - histo_coeff.at<double>(i,j);
 		}
 	}
 	//for(int i=0;i<time_step_amount;i++)
@@ -1185,25 +1466,56 @@ void Preprocessing_Data::distance_by_mdg(Mat& histo_coeff,Mat cluster_centers,Ma
 	//}
 
 	//delete [] mdg_value;
-	output_mat_as_csv_file_double("histo_coeff.csv",histo_coeff);
 
 }
 
-Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,Mat model,Mat cluster_tag,vector< vector<int> >voting_result,int k)
+void Preprocessing_Data::distance_by_bh(Mat& histo_coeff,int k)
+{
+	int time_step_amount = histo_coeff.rows;
+	for(int i=0;i<time_step_amount;i++)
+	{
+		for(int j=0;j<time_step_amount;j++)
+		{
+			if(i==j) continue;
+			else if(i>j)
+			{
+				histo_coeff.at<double>(i,j) = histo_coeff.at<double>(j,i);
+			}
+			else
+			{
+				double BC = 0.0;
+
+				for(int t=0;t<k;t++)
+				{
+					BC += adjust_weight[i][t] * adjust_weight[j][t];
+					//BC += (histogram.at<int>(i,t)/600.0) *  (histogram.at<int>(j,t)/600.0); 
+				}
+				BC = sqrt(BC);
+				histo_coeff.at<double>(i,j) = sqrt(1.0-BC);
+			}
+		}
+	}
+}
+
+Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,Mat model,Mat cluster_tag,int k)
 {
 	int time_step_amount = floor(raw_data.size()/600.0);
 	Mat histo_coeff = Mat::zeros(time_step_amount,time_step_amount,CV_64F);
 
 	//==================GMM(Gaussian Mixture Model)======================//
-	//Mat Ev = Mat::zeros(time_step_amount,cluster_centers.cols,CV_32F);
-	//distance_by_GMM(histo_coeff,Ev,cluster_centers,k);
+	Mat Ev = Mat::zeros(time_step_amount,cluster_centers.cols,CV_32F);
+	distance_by_GMM(histo_coeff,Ev,cluster_centers,k);
 	
 	//========Euclidean Distance + weighting by cluster distance========//
 	//distance_by_Euclidean(histo_coeff,cluster_centers,k);
 
 	//================Multivariate Gaussian Distribution================// 
+	//distance_by_mdg3(histo_coeff,cluster_centers,model,cluster_tag,voting_result);
 	//distance_by_mdg2(histo_coeff,cluster_centers,model,cluster_tag,voting_result);
-	distance_by_mdg2(histo_coeff,cluster_centers,model,cluster_tag,voting_result);
+
+	//distance_by_bh(histo_coeff,k);
+
+	output_mat_as_csv_file_double("histo_coeff.csv",histo_coeff);
 
 	//CompareHist
 	//char* testArr1 = new char[k];
@@ -1230,6 +1542,7 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,Mat model,Mat cluste
 	//cout << compar_bh << endl;
 	//==========================================================================//
 
+	/*
 	Matrix<double,Dynamic,Dynamic> histo_coeff_EigenType;//The type pass to Tapkee must be "double" not "float"
 	cv2eigen(histo_coeff,histo_coeff_EigenType);
 	TapkeeOutput output = tapkee::initialize() 
@@ -1242,7 +1555,193 @@ Mat Preprocessing_Data::Position_by_MDS(Mat cluster_centers,Mat model,Mat cluste
 	MDS_mat = MDS_mat.mul(50.0);
 	//output_mat_as_txt_file("normalized_MDS_mat_2.txt",MDS_mat);
 
-	return MDS_mat; 
+	return MDS_mat; */
+	
+	Mat position_mat = MDS(histo_coeff,1).clone();
+
+	return position_mat;
+}
+
+Mat Preprocessing_Data::MDS(Mat target_mat, int dim)
+{
+	Matrix<double,Dynamic,Dynamic> target_mat_EigenType;//The type pass to Tapkee must be "double" not "float"
+	cv2eigen(target_mat,target_mat_EigenType);
+	TapkeeOutput output = tapkee::initialize() 
+						   .withParameters((method=MultidimensionalScaling,target_dimension=1))
+						   .embedUsing(target_mat_EigenType);
+	
+	Mat MDS_mat; //Type:double  
+	eigen2cv(output.embedding,MDS_mat);
+	normalize(MDS_mat.col(0),MDS_mat.col(0),1,5000,NORM_MINMAX);//normalize to 1~1000	
+	//MDS_mat = MDS_mat.mul(50.0);
+
+	return MDS_mat;
+}
+
+Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
+{
+	int vTotal = lab_vertices.size();
+	//Turn LAB vector into LAB mat
+	Mat lab_mat = Mat::zeros(vTotal,3,CV_32F);
+	for(int i=0;i<vTotal;i++)
+	{
+		for(int j=0;j<3;j++)
+		{
+			lab_mat.at<float>(i,j) = lab_vertices[i][j+1];
+		}
+	}
+	//Compute centroid of cluster center
+	Mat cluster_center_centroid = compute_centroid(cluster_center);
+
+	//Align the centroid to the origin by subtract all points to centroid
+	Mat cluster_center_alignment_mat = Mat::zeros(cluster_center.rows,cluster_center.cols,CV_32F);
+	for(int i=0;i<cluster_center.rows;i++)
+	{
+		for(int j=0;j<cluster_center.cols;j++)
+		{
+			cluster_center_alignment_mat.at<float>(i,j) = cluster_center.at<float>(i,j) - cluster_center_centroid.at<float>(0,j);
+		}
+	}
+	Mat component,cluster_center_coeff;
+	Mat cluster_center_component = Mat::zeros(3,3,CV_32F);
+	int rDim = 3;
+	reduceDimPCA(cluster_center_alignment_mat, rDim, component, cluster_center_coeff);//PCA 4dim->3dim (for dimension reduction)
+	for(int i=0;i<3;i++)
+	{
+		for(int j=0;j<3;j++)
+		{
+			cluster_center_component.at<float>(i,j) = component.at<float>(i,j);
+		}
+	}
+	cout << "cluster_center_component " << endl << cluster_center_component << endl;
+	//cluster center 3 axis of PCA
+
+
+	output_mat_as_csv_file("cluster_center_coeff.csv",cluster_center_coeff);
+	//compute centroid of LAB
+	Mat lab_centroid = compute_centroid(lab_mat);
+	//lab vertices 3 axis of PCA
+	Mat lab_components,lab_coeff;
+	rDim = 3;
+	reduceDimPCA(lab_mat, rDim, lab_components, lab_coeff); //PCA 3dim->3dim (for principal component)
+	cout << "lab_components " << endl << lab_components << endl;
+
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	vector<float> move_vector;
+	for(float k=-20.0;k<=20.0;k+=1.0)
+		move_vector.push_back(k);
+
+	vector<float> scale_vector;
+	for(float k=1.0;k<=100.0;k+=1.0)
+		scale_vector.push_back(k);
+
+	Mat align_mat = Mat::zeros(cluster_center.rows,3,CV_32F);
+	Mat max_align_mat = Mat::zeros(cluster_center.rows,3,CV_32F);
+	int start = 1;
+	int luminance_threshold = 30;
+
+	Mat cluster_center_coeff_const = cluster_center_coeff.clone();
+	float scale = 1.0;
+	float max_scale = 1.0;
+	float max_move_x = 0.0;
+	float max_move_y = 0.0;
+	float max_move_z = 0.0;
+	bool flag = true;
+
+	for(int u=0;u<move_vector.size();u++)
+	{
+		for(int v=0;v<move_vector.size();v++)
+		{
+			for(int w=0;w<move_vector.size();w++)
+			{
+				float scale = max_scale;
+				flag = true;
+				while(flag)
+				{			
+						cluster_center_coeff = cluster_center_coeff_const.mul(scale);
+						//for(int i=0;i<cluster_center_coeff_const.rows;i++)
+						//{
+						//	cluster_center_coeff.at<float>(i,0) = cluster_center_coeff_const.at<float>(i,0) * scale_vector[u];
+						//	cluster_center_coeff.at<float>(i,1) = cluster_center_coeff_const.at<float>(i,1) * scale_vector[v];
+						//	cluster_center_coeff.at<float>(i,2) = cluster_center_coeff_const.at<float>(i,2) * scale_vector[w];
+						//}
+
+						for(int i=0;i<cluster_center.rows;i++)
+						{
+							for(int j=0;j<3;j++)
+							{
+								Mat result = cluster_center_coeff.row(i)*lab_components.col(j);
+								align_mat.at<float>(i,j) = result.at<float>(0,0);
+							}
+						}
+						add(align_mat.col(0),move_vector[u],align_mat.col(0)); //move
+						add(align_mat.col(1),move_vector[v],align_mat.col(1)); //move
+						add(align_mat.col(2),move_vector[w],align_mat.col(2)); //move
+				
+						//рみキ簿
+						for(int i=0;i<align_mat.rows;i++)
+						{
+							for(int j=0;j<3;j++)
+							{
+								align_mat.at<float>(i,j) += lab_centroid.at<float>(0,j);
+							}
+						}
+
+						//cout << align_mat << endl;
+						//system("pause");
+
+						//for(int i=0;i<align_mat.rows;i++)
+						//{
+						//	if( (align_mat.at<float>(i,0)<luminance_threshold) || (align_mat.at<float>(i,0)>90.0) )
+						//	{
+						//		flag = false;
+						//		break;
+						//	}
+						//}
+
+						if(flag)
+						{
+							for(int i=0;i<align_mat.rows;i++)
+							{
+								if(lab_boundary_test(align_mat.at<float>(i,0),align_mat.at<float>(i,1),align_mat.at<float>(i,2))==false)
+								{
+									flag = false;
+									break;
+								}
+							}	
+						}
+
+						if(flag)
+						{
+							if(scale>max_scale)
+							{
+								max_scale = scale;
+								max_move_x = move_vector[u];
+								max_move_y = move_vector[v];
+								max_move_z = move_vector[w];
+								max_align_mat = align_mat.clone();
+							}	
+						}
+
+						scale+=1.0;
+				}
+			}
+		}
+	}
+
+
+	cout << "max scale " << max_scale << endl;
+	cout << "max move x " << max_move_x << endl;
+	cout << "max move y " << max_move_y << endl;
+	cout << "max move z " << max_move_z << endl;
+
+	output_mat_as_csv_file("lab_raw_data.csv",max_align_mat);
+	//printf("max_move : %f max_scale : %f\n",max_move,max_scale);
+	
+	lab = max_align_mat.clone();
+	Mat rgb_mat = LAB2RGB(max_align_mat).clone();
+
+	return rgb_mat;
 }
 
 Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
@@ -1269,11 +1768,19 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 			cluster_center_alignment_mat.at<float>(i,j) = cluster_center.at<float>(i,j) - cluster_center_centroid.at<float>(0,j);
 		}
 	}
-	Mat cluster_center_component,cluster_center_PCA;
+	Mat component,cluster_center_PCA;
+	Mat cluster_center_component = Mat::zeros(3,3,CV_32F);
 	Mat garbage;
 	int rDim = 3;
-	reduceDimPCA(cluster_center_alignment_mat, rDim, cluster_center_component, cluster_center_PCA);//PCA 4dim->3dim (for dimension reduction)
-	reduceDimPCA(cluster_center_PCA, rDim, cluster_center_component, garbage); //PCA 3dim->3dim (for principal component)
+	reduceDimPCA(cluster_center_alignment_mat, rDim, component, cluster_center_PCA);//PCA 4dim->3dim (for dimension reduction)
+	//reduceDimPCA(cluster_center_PCA, rDim, cluster_center_component, garbage); //PCA 3dim->3dim (for principal component)
+	for(int i=0;i<3;i++)
+	{
+		for(int j=0;j<3;j++)
+		{
+			cluster_center_component.at<float>(i,j) = component.at<float>(i,j);
+		}
+	}
 	cout << "cluster_center_component " << endl << cluster_center_component << endl;
 	//cluster center 3 axis of PCA
 	Mat cluster_center_axis = Mat::zeros(3,3,CV_32F);
@@ -1375,9 +1882,6 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 
 	}
 
-
-	output_mat_as_csv_file("lab_raw_data.csv",max_align_mat);
-
 	if(max_scale==0)
 	{
 		for(int i=0;i<max_align_mat.rows;i++)
@@ -1389,8 +1893,10 @@ Mat Preprocessing_Data::lab_alignment(Mat cluster_center)
 		}
 	}
 
+	output_mat_as_csv_file("lab_raw_data.csv",max_align_mat);
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
 	
+	lab = max_align_mat.clone();
 	Mat rgb_mat = LAB2RGB(max_align_mat).clone();
 
 	return rgb_mat;
@@ -1420,7 +1926,7 @@ bool Preprocessing_Data::lab_boundary_test(float p1,float p2,float p3)
 	lab_color.at<Vec3f>(0, 0) = Vec3f(p1, p2, p3);
 	cvtColor(lab_color, rgb_color, CV_Lab2BGR);
 	cvtColor(rgb_color, lab_color, CV_BGR2Lab);
-	if(abs(lab_color.at<Vec3f>(0,0).val[0] - p1) > 0.01 || abs(lab_color.at<Vec3f>(0,0).val[1] - p2) > 0.01 || abs(lab_color.at<Vec3f>(0,0).val[2] - p3) > 0.01)
+	if(abs(lab_color.at<Vec3f>(0,0).val[0] - p1) > 1.0 || abs(lab_color.at<Vec3f>(0,0).val[1] - p2) > 1.0 || abs(lab_color.at<Vec3f>(0,0).val[2] - p3) > 1.0)
 		test = false;
 	return test;
 }
@@ -1621,6 +2127,7 @@ Mat Preprocessing_Data::lab_alignment_dim1(Mat cluster_center)
 	}
 
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
+	lab = max_align_mat.clone();
 	Mat rgb_mat2 = LAB2RGB(max_align_mat).clone();
 
 	return rgb_mat2;
@@ -1776,6 +2283,7 @@ Mat Preprocessing_Data::lab_alignment_dim2(Mat cluster_center)
 	}
 
 	printf("max_move : %f max_scale : %f\n",max_move,max_scale);
+	lab = max_align_mat.clone();
 	Mat rgb_mat2 = LAB2RGB(max_align_mat).clone();
 
 	return rgb_mat2;

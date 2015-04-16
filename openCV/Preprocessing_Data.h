@@ -39,10 +39,11 @@ private:
 	Mat Gaussian_filter(int attribute_title[]);
 	Mat set_matrix(int attribute_title[],int);
 	void voting(int,Mat,int);
-	Mat Position_by_MDS(Mat,Mat,Mat,vector< vector<int> >,int);
+	Mat Position_by_MDS(Mat,Mat,Mat,int);
 	Mat lab_alignment(Mat);
 	Mat lab_alignment_dim1(Mat);
 	Mat lab_alignment_dim2(Mat);
+	Mat lab_alignment_new(Mat);
 	void read_lab_csv();
 	bool lab_boundary_test(float,float,float);
 	Mat LAB2RGB(Mat);
@@ -56,9 +57,12 @@ private:
 	void distance_by_mdg(Mat&,Mat,Mat,Mat,vector< vector<int> >);
 	void distance_by_mdg2(Mat&,Mat,Mat,Mat,vector< vector<int> >);
 	void distance_by_mdg3(Mat&,Mat,Mat,Mat,vector< vector<int> >);
+	void distance_by_bh(Mat&,int);
 	float Log2(float); 
 	double mdg(Mat,int,Mat,Mat);
 	void interpolate_latlon(Mat&,int);
+	void adjust_histogram(Mat,Mat,Mat);
+	Mat MDS(Mat,int); 
 
 public:
 	Preprocessing_Data();
@@ -71,6 +75,8 @@ public:
 	Mat rgb_mat2;//float
 	Mat position;//double
 	Mat raw_data_3D;//float
+	Mat lab;//float
+	float** adjust_weight;
 };
 
 
