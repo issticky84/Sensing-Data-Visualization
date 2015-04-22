@@ -25,7 +25,6 @@ private:
 	vector < vector<float> > raw_data;
 	vector < vector<float> > lab_vertices;
 
-	void output_mat_as_txt_file(char file_name[],Mat);
 	void output_mat_as_csv_file(char file_name[],Mat);
 	void output_mat_as_csv_file_int(char file_name[],Mat);
 	void output_mat_as_csv_file_double(char file_name[],Mat);
@@ -47,6 +46,7 @@ private:
 	void read_lab_csv();
 	bool lab_boundary_test(float,float,float);
 	Mat LAB2RGB(Mat);
+	Mat RGB2LAB(Mat);
 	Mat compute_centroid(Mat);
 	void gray2rgb(float,float& ,float& ,float&);
 	Mat normalize_column(Mat);
@@ -63,6 +63,9 @@ private:
 	void interpolate_latlon(Mat&,int);
 	void adjust_histogram(Mat,Mat,Mat);
 	Mat MDS(Mat,int); 
+    void Position_by_histogram(Mat&);
+	Mat lab_alignment_by_cube(Mat);
+	void TSP();
 
 public:
 	Preprocessing_Data();
@@ -76,6 +79,8 @@ public:
 	Mat position;//double
 	Mat raw_data_3D;//float
 	Mat lab;//float
+	Mat MDS_1D;
+	Mat Ev_PCA1D;
 	float** adjust_weight;
 };
 

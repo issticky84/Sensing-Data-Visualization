@@ -21,7 +21,7 @@ void Preprocessing_Data::start()
 {
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20150104_2314_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -51,6 +51,10 @@ void Preprocessing_Data::start()
     //TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 1),  硂柑Τ把计∕﹚k-means挡材把计琌程Ω计材把计琌弘絋ぶ材把计琌ㄌ酚玡ㄢ把计非絛ㄒい碞琌ㄢ常把酚 or よΑ∕﹚
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	//=================LAB alignment====================//
+	
+	//////////////////////////////////////////
+	//lab_alignment_by_cube(cluster_centers);
+	/////////////////////////////////////////
 	clock_t begin5 = clock();
 	//if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment(cluster_centers);
 	if(cluster_centers.cols>=3) rgb_mat2 = lab_alignment_new(cluster_centers);
@@ -58,7 +62,7 @@ void Preprocessing_Data::start()
 	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
 	clock_t end5 = clock();
 	printf("\nLAB alignment elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
-	output_mat_as_csv_file("lab_mat.csv",rgb_mat2);
+	output_mat_as_csv_file("rgb_mat_raw.csv",rgb_mat2);
 	//==================================================//
 	//sort the cluster by color and generate new cluster tag and cluster center
 	clock_t begin4 = clock();
@@ -66,26 +70,18 @@ void Preprocessing_Data::start()
 	clock_t end4 = clock();
 	printf("\nSort by Color elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
 
-	output_mat_as_csv_file("lab_mat2.csv",rgb_mat2);
-	output_mat_as_csv_file("cluster_center.csv",cluster_centers);
-	output_mat_as_csv_file_int("cluster_tag.csv",cluster_tag);
+	output_mat_as_csv_file("rgb_mat_sort.csv",rgb_mat2);
+	output_mat_as_csv_file("cluster_center_sort.csv",cluster_centers);
+
 	//==================================================//
 	voting(k,cluster_tag,model.rows); // Type: int	
-	//adjust_histogram(cluster_centers,cluster_tag,model);
-	////////////
+	output_mat_as_csv_file_int("histogram.csv",histogram);
+
+	////////////////////////
+	adjust_histogram(cluster_centers,cluster_tag,model);
+	////////////////////////
 	//test(cluster_centers,model,cluster_tag);
 	///////////
-	//===================PCA RGB=======================//
-	Mat components, result;
-	int rDim = 3;
-	//clock_t begin4 = clock();
-	//reduceDimPCA(cluster_centers, rDim, components, result);
-	//clock_t end4 = clock();
-	//printf("PCA RGB elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
-	//rgb_mat = result.clone();
-	//for(int i=0;i<result.cols;i++)
-	//	normalize(result.col(i),rgb_mat.col(i),0,1,NORM_MINMAX); //normalize to 0-1
-	//output_mat_as_txt_file("rgb_mat.txt",rgb_mat);
 	//================voting result=====================//
 	//clock_t begin5 = clock();
 	//vector< vector<int> > voting_result(k);
@@ -96,62 +92,61 @@ void Preprocessing_Data::start()
 	//}
 	//clock_t end5 = clock();
 	//printf("Voting Result elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
+
 	//===============Position (MDS)=====================//
 	clock_t begin6 = clock();
-	position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
+	//position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
+	MDS_1D = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
 	cluster_tag.release();
 	output_mat_as_csv_file_double("position.csv",position);
 	clock_t end6 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end6 - begin6) / CLOCKS_PER_SEC);
 	cluster_centers.release();
 	//===================PCA raw data 3 dim=======================//
-	rDim = 1;
-	reduceDimPCA(model, rDim, components, result);
-	normalize(result.col(0),result.col(0),0,1,NORM_MINMAX); //normalize to 0-1
-	Mat raw_data_3D = Mat::zeros(result.rows,3,CV_32F);
-	for(int i=0;i<result.rows;i++)
-	{
-		float r,g,b;
-		gray2rgb(result.at<float>(i,0),r,g,b);
-		raw_data_3D.at<float>(i,0) = r;
-		raw_data_3D.at<float>(i,1) = g;
-		raw_data_3D.at<float>(i,2) = b;
-	}
-	output_mat_as_txt_file("raw_data_3D.txt",raw_data_3D);
-	//raw_data_3D = result.clone();
-	//for(int i=0;i<result.cols;i++)
-	//	normalize(result.col(i),raw_data_3D.col(i),0,1,NORM_MINMAX); //normalize to 0-1
+	//////////////////////////////////////////////////////
+	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
+	Position_by_histogram(histo_position);
+	position = histo_position.clone();
+	//////////////////////////////////////////////////////
+
+	//Mat components, result;
+	//int rDim = 3;
+	//rDim = 1;
+	//reduceDimPCA(model, rDim, components, result);
+	//normalize(result.col(0),result.col(0),0,1,NORM_MINMAX); //normalize to 0-1
+	//Mat raw_data_3D = Mat::zeros(result.rows,3,CV_32F);
+	//for(int i=0;i<result.rows;i++)
+	//{
+	//	float r,g,b;
+	//	gray2rgb(result.at<float>(i,0),r,g,b);
+	//	raw_data_3D.at<float>(i,0) = r;
+	//	raw_data_3D.at<float>(i,1) = g;
+	//	raw_data_3D.at<float>(i,2) = b;
+	//}
+
 	model.release();
 
 }
 
-void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers, Mat& cluster_tag)
+void Preprocessing_Data::sort_by_color(int k, Mat& rgb_mat2, Mat& cluster_centers, Mat& cluster_tag)
 {
-	vector< vector<float> > rgb_vector;
-	for(int i=0;i<k;i++)
-	{
-		vector<float> rgb;
-		for(int j=0;j<3;j++)
-		{
-			rgb.push_back(rgb_mat2.at<float>(i,j));
-		}
-		rgb_vector.push_back(rgb);
-	}
-
 	class cluster_info{
 	public:
 		int key;
-		vector<float> rgb_vec;
+		Mat rgb;
 		Mat lab;
 		Mat lab_1D;
+		Mat cluster_center;
 		
-		cluster_info(int k,vector<float> rgb,Mat lab_mat,Mat lab_1D_mat){
+		cluster_info(int k, Mat rgb_mat, Mat lab_mat, Mat lab_1D_mat, Mat center){
 			key = k;
-			rgb_vec = rgb;
+			rgb = rgb_mat.clone();
 			lab = lab_mat.clone();
 			lab_1D = lab_1D_mat.clone();
+			cluster_center = center.clone();
 		} 
 	};
+
 	class sort_by_rgb{
 	public:
 		inline bool operator() (cluster_info& c1, cluster_info& c2)
@@ -171,13 +166,13 @@ void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers,
 			return (A1<A2 || (A1==A2 && B1>B2) || (A1==A2 && B1==B2 && L1>L2) );
 			return (L1<L2 || (L1==L2 && A1>A2) || (L1==L2 && A1==A2 && B1>B2) );
 			*/
-
-			float R1 = c1.rgb_vec[0];
-			float G1 = c1.rgb_vec[1];
-			float B1 = c1.rgb_vec[2];
-			float R2 = c2.rgb_vec[0];
-			float G2 = c2.rgb_vec[1];
-			float B2 = c2.rgb_vec[2];
+			
+			float R1 = c1.rgb.at<float>(0,0);
+			float G1 = c1.rgb.at<float>(0,1);
+			float B1 = c1.rgb.at<float>(0,2);
+			float R2 = c2.rgb.at<float>(0,0);
+			float G2 = c2.rgb.at<float>(0,1);
+			float B2 = c2.rgb.at<float>(0,2);
 			Mat rgb_color1(1, 1, CV_32FC3);
 			Mat rgb_color2(1, 1, CV_32FC3);
 			Mat hsv_color1(1, 1, CV_32FC3);
@@ -207,42 +202,33 @@ void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers,
 		{
 			for(int t=0;t<3;t++)
 			{
-				///////////////////////////////////////////////
 				lab_dist.at<double>(i,j) += abs( lab.at<float>(i,t) - lab.at<float>(j,t) );
 			}
 		}
 	}
 
-	output_mat_as_csv_file_double("lab_dist.csv",lab_dist);
+	//output_mat_as_csv_file_double("lab_dist.csv",lab_dist);
 	Mat lab_1D = MDS(lab_dist,1).clone();
-	output_mat_as_csv_file_double("lab_1D.csv",lab_1D);
+	//output_mat_as_csv_file_double("lab_1D.csv",lab_1D);
 
 	vector< cluster_info > cluster_vec;
 	for(int i=0;i<k;i++)
 	{
-		cluster_vec.push_back( cluster_info( i,rgb_vector[i],lab.row(i),lab_1D.row(i) ) );
+		cluster_vec.push_back( cluster_info( i,rgb_mat2.row(i),lab.row(i),lab_1D.row(i),cluster_centers.row(i) ) );
 	}
 
 	sort(cluster_vec.begin(), cluster_vec.end(), sort_by_rgb());
 
-	
-	//for(int i=0;i<cluster_vec.size();i++)
-	//{
-	//	cout << cluster_vec[i].key << " ";
-	//}
-	
-	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
-	output_mat_as_csv_file_int("cluster_tag_old.csv",cluster_tag);
-	Mat cluster_centers_old = cluster_centers.clone();
-	Mat rgb_mat2_old = rgb_mat2.clone();
-	Mat cluster_tag_old = cluster_tag.clone();
+
+	//猔種:row狡籹ぃノrgb_mat2.row(i) = rgb_mat2_old.row(new_tag).clone();!!!!!!!
 	for(int i=0;i<k;i++)
 	{
-		int new_tag = cluster_vec[i].key;
-		cluster_centers_old.row(new_tag).copyTo(cluster_centers.row(i));
-		rgb_mat2_old.row(new_tag).copyTo(rgb_mat2.row(i));
-		//猔種:row狡籹ぃノrgb_mat2.row(i) = rgb_mat2_old.row(new_tag).clone();!!!!!!!
+		cluster_vec[i].cluster_center.copyTo(cluster_centers.row(i));
+		cluster_vec[i].rgb.copyTo(rgb_mat2.row(i));
 	}
+
+	//穝clustertag
+	Mat cluster_tag_old = cluster_tag.clone();
 	for(int i=0;i<raw_data.size();i++)
 	{
 		int find;
@@ -256,14 +242,6 @@ void Preprocessing_Data::sort_by_color(int k,Mat& rgb_mat2,Mat& cluster_centers,
 		}
 		cluster_tag.at<int>(i,0) = find;	
 	}
-}
-
-void Preprocessing_Data::output_mat_as_txt_file(char file_name[],Mat mat)
-{
-	ofstream fout(file_name);
-	fout << mat << endl;
-
-	fout.close();
 }
 
 void Preprocessing_Data::output_mat_as_csv_file(char file_name[],Mat mat)
@@ -673,8 +651,8 @@ Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_siz
 
 	Mat normalize_mat = handle_mat_transpose;
 	for(int i=0;i<handle_mat_transpose.cols;i++)///////////
-		normalize_mat.col(i) = normalize_column(handle_mat_transpose.col(i)).clone();
-		//normalize(handle_mat2.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
+		//normalize_mat.col(i) = normalize_column(handle_mat_transpose.col(i)).clone();
+		normalize(handle_mat_transpose.col(i),normalize_mat.col(i),0,1,NORM_MINMAX);
 
 	//output_mat_as_csv_file("normalize_mat.csv",normalize_mat);
 	//normalize_mat.col(2) = normalize_mat.col(2).mul(100.0);//enhance the weighting of distance
@@ -757,8 +735,6 @@ void Preprocessing_Data::voting(int k,Mat cluster_tag,int row_size)
 		}
 	}
 
-	output_mat_as_csv_file_int("histogram.csv",histogram);
-
 }
 
 void Preprocessing_Data::distance_by_Euclidean(Mat& histo_coeff, Mat cluster_centers, int k)
@@ -806,9 +782,13 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 			//Ev.row(i) += adjust_weight[i][j]*cluster_centers.row(j);
 			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_centers.row(j);
 		}
-		//Ev.row(i)/=600;
 	}
 	output_mat_as_csv_file("Ev.csv",Ev);	
+
+	Mat components, coeff;
+	int rDim = 1;
+	reduceDimPCA(Ev, rDim, components, coeff);
+	Ev_PCA1D = coeff * components;
 
 	for(int i=0;i<time_step_amount;i++)
 	{
@@ -935,8 +915,18 @@ void Preprocessing_Data::adjust_histogram(Mat cluster_centers,Mat cluster_tag,Ma
 		for(int j=i*600;j<(i+1)*600;j++)
 		{
 			int t = cluster_tag.at<int>(j,0);
-			new_weight[i][t] += mdg(model.row(j),dim,c_list[t].cov,mean.row(t));
-			total_weight[i] += new_weight[i][t];
+			//float sum_of_prob = 0.0;
+			//for(int t=0;t<k;t++)
+			//{
+			//	sum_of_prob += ((float)c_list[t].num/raw_size)*mdg(model.row(j),dim,c_list[t].cov,mean.row(t));//p(ci)*G(x|ci)			
+			//}
+			//for(int t=0;t<k;t++)
+			//{
+				//new_weight[i][t] += ( ((float)c_list[t].num/raw_size)*mdg(model.row(j),dim,c_list[t].cov,mean.row(t)) / sum_of_prob);//p(ci)*G(x|ci)
+				//new_weight[i][t] +=  ((float)c_list[t].num/raw_size)*mdg(model.row(j),dim,c_list[t].cov,mean.row(t));//p(ci)*G(x|ci)
+				new_weight[i][t] +=  (histogram.at<int>(i,t)/600.0)*mdg(model.row(j),dim,c_list[t].cov,mean.row(t));//p(ci)*G(x|ci)
+				total_weight[i] += new_weight[i][t];
+			//}
 		}
 	}
 
@@ -950,6 +940,20 @@ void Preprocessing_Data::adjust_histogram(Mat cluster_centers,Mat cluster_tag,Ma
 			adjust_weight[i][j] = new_weight[i][j]/total_weight[i];
 		}
 	}
+
+	Mat histogram_adjust = Mat::zeros(five_minutes_amount,k,CV_32S);
+	for(int i=0;i<five_minutes_amount;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			//cout << adjust_weight[i][j] << endl;
+			histogram_adjust.at<int>(i,j) = (int)(adjust_weight[i][j]*600.0);
+			//cout << histogram_adjust.at<int>(i,j) << endl;
+			//system("pause");
+		}
+	}
+
+	output_mat_as_csv_file_int("histogram_adjust.csv",histogram_adjust);
 }
 
 void Preprocessing_Data::distance_by_mdg3(Mat& histo_coeff,Mat cluster_centers,Mat model,Mat cluster_tag,vector< vector<int> > voting_result)
@@ -1491,7 +1495,8 @@ void Preprocessing_Data::distance_by_bh(Mat& histo_coeff,int k)
 					//BC += (histogram.at<int>(i,t)/600.0) *  (histogram.at<int>(j,t)/600.0); 
 				}
 				BC = sqrt(BC);
-				histo_coeff.at<double>(i,j) = sqrt(1.0-BC);
+				histo_coeff.at<double>(i,j) = -log( MAX(BC,0.0000001) );
+				//histo_coeff.at<double>(i,j) = sqrt(1.0 - BC);
 			}
 		}
 	}
@@ -1578,6 +1583,174 @@ Mat Preprocessing_Data::MDS(Mat target_mat, int dim)
 	return MDS_mat;
 }
 
+Mat Preprocessing_Data::lab_alignment_by_cube(Mat cluster_center)
+{
+	int vTotal = lab_vertices.size();
+	int k = cluster_center.rows;
+	//Turn LAB vector into LAB mat
+	Mat lab_mat = Mat::zeros(vTotal,3,CV_32F);
+	for(int i=0;i<vTotal;i++)
+	{
+		for(int j=0;j<3;j++)
+		{
+			lab_mat.at<float>(i,j) = lab_vertices[i][j+1];
+		}
+	}
+
+	//Compute centroid of cluster center
+	Mat cluster_center_centroid = compute_centroid(cluster_center);
+	//Align the centroid to the origin by subtract all points to centroid
+	Mat cluster_center_alignment_mat = Mat::zeros(cluster_center.rows,cluster_center.cols,CV_32F);
+	for(int i=0;i<cluster_center.rows;i++)
+	{
+		for(int j=0;j<cluster_center.cols;j++)
+		{
+			cluster_center_alignment_mat.at<float>(i,j) = cluster_center.at<float>(i,j) - cluster_center_centroid.at<float>(0,j);
+		}
+	}
+
+	Mat lab_centroid = compute_centroid(lab_mat).clone();
+	//Align the centroid to the origin by subtract all points to centroid
+	Mat lab_alignment_mat = Mat::zeros(lab_mat.rows,lab_mat.cols,CV_32F);
+	for(int i=0;i<lab_mat.rows;i++)
+	{
+		for(int j=0;j<lab_mat.cols;j++)
+		{
+			lab_alignment_mat.at<float>(i,j) = lab_mat.at<float>(i,j) - lab_centroid.at<float>(0,j);
+		}
+	}
+
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	Mat component,cluster_center_coeff;
+	Mat cluster_center_component = Mat::zeros(3,3,CV_32F);
+	int rDim = 3;
+	reduceDimPCA(cluster_center_alignment_mat, rDim, component, cluster_center_coeff);//PCA 4dim->3dim (for dimension reduction)
+	for(int i=0;i<3;i++)
+	{
+		for(int j=0;j<3;j++)
+		{
+			cluster_center_component.at<float>(i,j) = component.at<float>(i,j);
+		}
+	}
+	cout << "cluster_center_component " << endl << cluster_center_component << endl;
+
+	//lab vertices 3 axis of PCA
+	Mat lab_components,lab_coeff;
+	rDim = 3;
+	reduceDimPCA(lab_alignment_mat, rDim, lab_components, lab_coeff); //PCA 3dim->3dim (for principal component)
+	cout << "lab_components " << endl << lab_components << endl;
+
+	////////////////////////////////////
+	double min,max;
+	double cmax[3],cmin[3];
+	double lmax[3],lmin[3];
+	double lmax_const[3],lmin_const[3];
+	for(int i=0;i<3;i++)
+	{
+		minMaxLoc(cluster_center_coeff.col(i), &min, &max);
+		cmax[i] = max;
+		cmin[i] = min;
+		minMaxLoc(lab_coeff.col(i), &min, &max);
+		lmax[i] = max;
+		lmin[i] = min;
+		lmax_const[i] = max;
+		lmin_const[i] = min;
+	}
+
+
+	Mat max_lab_normalize_mat = Mat::zeros(k,3,CV_32F);
+	bool flag = false;
+	vector<double> scale_factor;
+	for(double i=0.0;i<=80.0;i+=5.0)
+		scale_factor.push_back(i);
+	double min_scale_1 = 100.0;
+	double min_scale_2 = 100.0;
+	double min_scale_3 = 100.0;
+
+	for(int u=0;u<scale_factor.size();u++)
+	{
+		for(int v=0;v<scale_factor.size();v++)
+		{
+			for(int w=0;w<scale_factor.size();w++)
+			{
+				//flag = false;
+				//while(flag==false)
+				//{
+					flag = false;
+
+					Mat lab_normalize_mat = Mat::zeros(k,3,CV_32F);
+					for(int i=0;i<k;i++)
+					{
+						double c[3];
+						for(int j=0;j<3;j++)
+						{
+							c[j] = cluster_center_coeff.at<float>(i,j);
+							double f_c = lmin[j] + (c[j]-cmin[j])/(cmax[j]-cmin[j])*(lmax[j]-lmin[j]);
+							//cout << "f_c " << f_c << endl;
+							add(lab_components.row(j).mul(f_c),lab_normalize_mat.row(i),lab_normalize_mat.row(i));
+						}
+					}
+
+					lmin[0] = lmin_const[0] + scale_factor[u];
+					lmax[0] = lmax_const[0] - scale_factor[u];
+					lmin[1] = lmin_const[1] + scale_factor[v];
+					lmax[1] = lmax_const[1] - scale_factor[v];
+					lmin[2] = lmin_const[2] + scale_factor[w];
+					lmax[2] = lmax_const[2] - scale_factor[w];
+
+					for(int i=0;i<lab_normalize_mat.rows;i++)
+					{
+						add(lab_centroid.row(0),lab_normalize_mat.row(i),lab_normalize_mat.row(i));
+					}
+
+					for(int i=0;i<lab_normalize_mat.rows;i++)
+					{
+						if(lab_boundary_test(lab_normalize_mat.at<float>(i,0),lab_normalize_mat.at<float>(i,1),lab_normalize_mat.at<float>(i,2))==false)
+						{
+							flag = false;
+							break;
+						}
+						flag = true;
+					}	
+
+					if(flag)
+					{
+						if(scale_factor[u] < min_scale_1)
+						{
+							min_scale_1 = scale_factor[u];
+							max_lab_normalize_mat = lab_normalize_mat.clone();
+						}
+						if(scale_factor[v] > min_scale_2)
+						{
+							min_scale_2 = scale_factor[v];
+							max_lab_normalize_mat = lab_normalize_mat.clone();
+						}		
+						if(scale_factor[w] > min_scale_3)
+						{
+							min_scale_3 = scale_factor[w];
+							max_lab_normalize_mat = lab_normalize_mat.clone();
+						}
+					}
+
+					//cout << "flag " << flag << endl;
+				//}
+			}
+		}
+	}
+
+	cout << "min scale 1 " << min_scale_1 << endl;
+	cout << "min scale 2 " << min_scale_2 << endl;
+	cout << "min scale 3 " << min_scale_3 << endl;
+
+	output_mat_as_csv_file("lab_normalize_mat.csv",max_lab_normalize_mat);
+
+	//lab = max_lab_normalize_mat.clone();
+	Mat rgb = LAB2RGB(max_lab_normalize_mat).clone();
+	output_mat_as_csv_file("rgb.csv",rgb);
+
+	return rgb;
+}
+
 Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
 {
 	int vTotal = lab_vertices.size();
@@ -1591,7 +1764,7 @@ Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
 		}
 	}
 	//Compute centroid of cluster center
-	Mat cluster_center_centroid = compute_centroid(cluster_center);
+	Mat cluster_center_centroid = compute_centroid(cluster_center).clone();
 
 	//Align the centroid to the origin by subtract all points to centroid
 	Mat cluster_center_alignment_mat = Mat::zeros(cluster_center.rows,cluster_center.cols,CV_32F);
@@ -1619,21 +1792,30 @@ Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
 
 	output_mat_as_csv_file("cluster_center_coeff.csv",cluster_center_coeff);
 	//compute centroid of LAB
-	Mat lab_centroid = compute_centroid(lab_mat);
+	Mat lab_centroid = compute_centroid(lab_mat).clone();
+	//Align the centroid to the origin by subtract all points to centroid
+	Mat lab_alignment_mat = Mat::zeros(lab_mat.rows,lab_mat.cols,CV_32F);
+	for(int i=0;i<lab_mat.rows;i++)
+	{
+		for(int j=0;j<lab_mat.cols;j++)
+		{
+			lab_alignment_mat.at<float>(i,j) = lab_mat.at<float>(i,j) - lab_centroid.at<float>(0,j);
+		}
+	}
 	//lab vertices 3 axis of PCA
 	Mat lab_components,lab_coeff;
 	rDim = 3;
-	reduceDimPCA(lab_mat, rDim, lab_components, lab_coeff); //PCA 3dim->3dim (for principal component)
+	reduceDimPCA(lab_alignment_mat, rDim, lab_components, lab_coeff); //PCA 3dim->3dim (for principal component)
 	cout << "lab_components " << endl << lab_components << endl;
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	vector<float> move_vector;
-	for(float k=-20.0;k<=20.0;k+=1.0)
+	for(float k=-50.0;k<=50.0;k+=2.0)
 		move_vector.push_back(k);
 
-	vector<float> scale_vector;
-	for(float k=1.0;k<=100.0;k+=1.0)
-		scale_vector.push_back(k);
+	//vector<float> scale_vector;
+	//for(float k=1.0;k<=100.0;k+=1.0)
+	//	scale_vector.push_back(k);
 
 	Mat align_mat = Mat::zeros(cluster_center.rows,3,CV_32F);
 	Mat max_align_mat = Mat::zeros(cluster_center.rows,3,CV_32F);
@@ -1945,6 +2127,22 @@ Mat Preprocessing_Data::LAB2RGB(Mat lab_mat)
 	}
 
 	return rgb_mat2;
+}
+
+Mat Preprocessing_Data::RGB2LAB(Mat rgb)
+{
+	Mat lab_mat = rgb.clone();
+	for(int i=0;i<lab_mat.rows;i++)
+	{
+		Mat color(1, 1, CV_32FC3);
+		color.at<Vec3f>(0, 0) = Vec3f(rgb.at<float>(i,2),rgb.at<float>(i,1),rgb.at<float>(i,0));		
+		cvtColor(color, color, CV_BGR2Lab);
+		lab_mat.at<float>(i,0) = color.at<Vec3f>(0,0).val[0];//L
+		lab_mat.at<float>(i,1) = color.at<Vec3f>(0,0).val[1];//a
+		lab_mat.at<float>(i,2) = color.at<Vec3f>(0,0).val[2];//b
+	}
+
+	return lab_mat;
 }
 
 void Preprocessing_Data::read_lab_csv()
@@ -2324,7 +2522,7 @@ void Preprocessing_Data::gray2rgb(float gray,float& r,float& g,float& b)
 
 Mat Preprocessing_Data::normalize_column(Mat col_mat)
 {
-	Mat output_mat = col_mat;
+	Mat output_mat = col_mat.clone();
 	double min,max;
 	minMaxLoc(output_mat, &min, &max);
 	for(int i=0;i<col_mat.rows;i++)
@@ -2334,4 +2532,104 @@ Mat Preprocessing_Data::normalize_column(Mat col_mat)
 	}
 
 	return output_mat;
+}
+
+void Preprocessing_Data::Position_by_histogram(Mat& histo_position)//histo_position:double
+{
+	int k = histogram.cols;
+	int five_minutes = histogram.rows;
+	Mat histogram_copy = histogram.clone();
+	Mat histogram_sort = histogram.clone();
+	
+	class histo_info{
+	public:
+		int* vote;
+		int cols;
+		int key;
+		Mat histo;
+		Mat MDS_1D;
+		Mat Ev_PCA1D;
+	};
+	vector< histo_info > histo_vec(five_minutes);
+	for(int i=0;i<five_minutes;i++)
+	{
+		Ev_PCA1D.row(i).copyTo(histo_vec[i].Ev_PCA1D);
+		MDS_1D.row(i).copyTo(histo_vec[i].MDS_1D);
+		histogram.row(i).copyTo(histo_vec[i].histo);
+		histo_vec[i].key = i;
+		histo_vec[i].cols = k;
+		histo_vec[i].vote = new int[k];
+		for(int j=0;j<k;j++)
+		{
+			histo_vec[i].vote[j] = histogram.at<int>(i,j);
+		}
+	}
+
+	class sort_by_votes{
+	public:
+		inline bool operator() (histo_info& h1, histo_info& h2)
+		{
+			//for(int i=0;i<h1.cols;i++)
+			//{
+			//	if(h1.vote[i] != h2.vote[i])
+			//	{
+			//		return h2.vote[i] < h1.vote[i] ;
+			//	}
+			//}
+			//return false;
+			//return h1.MDS_1D.at<double>(0,0) < h2.MDS_1D.at<double>(0,0);
+			return h1.Ev_PCA1D.at<float>(0,0) < h2.Ev_PCA1D.at<float>(0,0);
+		}
+	};
+
+	sort(histo_vec.begin(), histo_vec.end(), sort_by_votes() );
+
+	//for(int i=0;i<five_minutes;i++)
+	//	cout << histo_vec[i].key << " " ;
+	//cout << endl;
+
+	Mat dist = Mat::zeros(1,five_minutes-1,CV_64F);
+	double total = 0.0;
+	for(int i=0;i<five_minutes-1;i++)
+	{
+		double vote_dist = 0.0;
+		for(int j=0;j<k;j++)
+		{
+			vote_dist += abs( histo_vec[i].histo.at<int>(0,j) - histo_vec[i+1].histo.at<int>(0,j) );
+			//vote_dist += sqrt( histo_vec[i].histo.at<int>(0,j)/600.0 * histo_vec[i+1].histo.at<int>(0,j)/600.0 );
+		}
+		//vote_dist = -log( MAX(vote_dist,0.0000001) );
+
+		//total += vote_dist;
+		dist.at<double>(0,i) = pow(vote_dist,5);
+	}
+	output_mat_as_csv_file_double("vote_dist.csv",dist.t());
+	
+	Mat histo_position_sort = Mat::zeros(five_minutes,1,CV_64F);
+	histo_position_sort.at<double>(0,0) = 0.0;
+	double accumulate_dist = 0.0;
+	for(int i=0;i<five_minutes-1;i++)
+	{
+		accumulate_dist += dist.at<double>(0,i);
+		histo_position_sort.at<double>(i+1,0) = accumulate_dist;
+	}
+
+	normalize(histo_position_sort.col(0),histo_position_sort.col(0),0,5000,NORM_MINMAX); 
+	//cout << endl << dist << endl << endl;
+	//cout << endl << histo_position << endl;
+
+	for(int i=0;i<five_minutes;i++)
+	{
+		int key = histo_vec[i].key;
+		histo_position.at<double>(key,0) = histo_position_sort.at<double>(i,0);
+	}
+
+}
+
+void Preprocessing_Data::TSP()
+{
+	int infinity = 1<<30;
+
+
+
 }
