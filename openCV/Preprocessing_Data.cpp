@@ -68,31 +68,21 @@ void Preprocessing_Data::start()
 	clock_t begin4 = clock();
 	sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
 	clock_t end4 = clock();
-	printf("\nSort by Color elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
+	printf("Sort by Color elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
 
 	output_mat_as_csv_file("rgb_mat_sort.csv",rgb_mat2);
 	output_mat_as_csv_file("cluster_center_sort.csv",cluster_centers);
 
 	//==================================================//
+	clock_t begin7 = clock();
 	voting(k,cluster_tag,model.rows); // Type: int	
 	output_mat_as_csv_file_int("histogram.csv",histogram);
-
+	clock_t end7 = clock();
+	printf("Histogram voting elapsed time: %f\n",double(end7 - begin7) / CLOCKS_PER_SEC);
 	////////////////////////
-	adjust_histogram(cluster_centers,cluster_tag,model);
+	//TSP_for_lab_color(cluster_centers);
+	//TSP_for_histogram(cluster_centers);
 	////////////////////////
-	//test(cluster_centers,model,cluster_tag);
-	///////////
-	//================voting result=====================//
-	//clock_t begin5 = clock();
-	//vector< vector<int> > voting_result(k);
-	//for(int i=0;i<cluster_tag.rows;i++)
-	//{
-	//	int c = cluster_tag.at<int>(i,0);
-	//	voting_result[c].push_back(i);
-	//}
-	//clock_t end5 = clock();
-	//printf("Voting Result elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
-
 	//===============Position (MDS)=====================//
 	clock_t begin6 = clock();
 	//position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
@@ -102,13 +92,13 @@ void Preprocessing_Data::start()
 	clock_t end6 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end6 - begin6) / CLOCKS_PER_SEC);
 	cluster_centers.release();
-	//===================PCA raw data 3 dim=======================//
+	
 	//////////////////////////////////////////////////////
 	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
 	Position_by_histogram(histo_position);
 	position = histo_position.clone();
 	//////////////////////////////////////////////////////
-
+	//===================PCA raw data 3 dim=======================//
 	//Mat components, result;
 	//int rDim = 3;
 	//rDim = 1;
@@ -1810,7 +1800,7 @@ Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	vector<float> move_vector;
-	for(float k=-50.0;k<=50.0;k+=2.0)
+	for(float k=-10.0;k<=10.0;k+=1.0)
 		move_vector.push_back(k);
 
 	//vector<float> scale_vector;
@@ -2626,10 +2616,277 @@ void Preprocessing_Data::Position_by_histogram(Mat& histo_position)//histo_posit
 
 }
 
-void Preprocessing_Data::TSP()
+string Preprocessing_Data::int2str(int i)
 {
-	int infinity = 1<<30;
+		stringstream ss;
+		ss << i;
+		return ss.str();
+}
+
+double Preprocessing_Data::CalculateDistance(CITY_INFO c1, CITY_INFO c2)
+{
+    double result = sqrt( (double)(c1.x - c2.x)*(c1.x - c2.x) + (c1.y - c2.y)*(c1.y - c2.y));
+    return result;	
+}
+
+void Preprocessing_Data::TSP_Helper(vector<CITY_INFO> &arr, double *dist, string &path, CITY_INFO &firstpoint, CITY_INFO &lastpoint)
+{
+    int len = arr.size();
+    if(len > 5)
+        return; // Not Supported
+ 
+    double mindist = INT_MAX;
+    std::string str = "01234";
+    str = str.substr(0, len);
+    do
+    {
+        double distance = 0;
+        for(int i = 0; i < str.size() - 1; i++)
+        {
+            distance += CalculateDistance(arr[str[i]-'0'], arr[str[i+1] - '0']);
+        }
+        if( mindist > distance)
+        {
+            mindist = distance;
+            *dist = mindist;
+           
+            path = "";
+			path_index_vec[path_index].clear();
+            for(int i = 0; i < str.size(); i++)
+            {
+                path += arr[str[i]-'0'].cityname;
+				//path_index[index].push_back( str2int(arr[str[i]-'0'].cityname) );
+				path_index_vec[path_index].push_back( arr[str[i]-'0'].index );
+            }
+ 
+            firstpoint = arr[str[0]-'0'];
+            lastpoint = arr[str[str.size() - 1]-'0'];           
+        }
+        //std::cout << *dist << "\t" << str.c_str() << "\n";
+ 
+    } while(std::next_permutation(str.begin(), str.end()) != false);
+
+	path_index++;	
+}
+
+bool Preprocessing_Data::SplitSet(const vector<CITY_INFO> &myset, vector< vector<CITY_INFO> > &mysplitset)
+{
+    // Construct a grid
+ 
+    std::vector<CITY_INFO>::const_iterator it = myset.begin();
+ 
+    double minx = it->x;
+    double maxx = it->x;
+    double miny = it->y;
+    double maxy = it->y;
+ 
+    for(; it != myset.end(); ++it)
+    {
+        if(minx >= it->x)
+            minx = it->x;
+        if(maxx < it->x)
+            maxx = it->x;
+ 
+        if(miny >= it->y)
+            miny = it->y;
+        if(maxy < it->y)
+            maxy = it->y;
+    }
+    double width = maxx - minx;
+    double height = maxy - miny;
+    double midx = width / 2 + minx;
+    double midy = height / 2 + miny;
+ 
+   
+    std::vector<CITY_INFO> s1, s2, s3, s4;
+    std::vector<CITY_INFO> *pset[] = { &s1, &s2, &s3, &s4 };
+ 
+    it = myset.begin();
+    for(; it != myset.end(); ++it)
+    {
+        // First Grid
+        if(it->x < midx && it->y < midy)
+            s1.push_back(*it);       
+    
+        // Second Grid
+        if(it->x >= midx && it->y < midy)
+            s2.push_back(*it);
+   
+        // Third Grid
+        if(it->x < midx && it->y >= midy)
+            s3.push_back(*it);
+       
+        // Fourth Grid
+        if(it->x >= midx && it->y >= midy)
+            s4.push_back(*it);
+    }
+ 
+    for(int i = 0; i < 4; i++)
+    {
+        if(pset[i]->size() <= 5)
+        {
+            if(pset[i]->size() > 0)
+                mysplitset.push_back(*pset[i]);
+        }
+        else
+        {
+            std::vector<std::vector<CITY_INFO> > tempset;
+            SplitSet(*pset[i], tempset);
+            for(std::vector<std::vector<CITY_INFO> >::iterator tit = tempset.begin();
+                tit != tempset.end(); ++tit)
+            {
+                if(tit->size() > 0)
+                    mysplitset.push_back(*tit);
+            }
+        }
+    }
+    return true;	
+}
+
+void Preprocessing_Data::TSP_Start(CITY_INFO *parr, int len, double *dist, std::string &finalpath)
+{
+    int NumCities = len;
+    if(NumCities <= 5)
+    {
+        std::vector<CITY_INFO> myset;
+        for(int i = 0; i < len; i++)
+        {
+            myset.push_back(parr[i]);
+        }
+        CITY_INFO firstpoint, lastpoint;
+        TSP_Helper(myset, dist, finalpath, firstpoint, lastpoint);
+    }
+    else
+    {
+        std::vector<CITY_INFO> myset;
+        for(int i = 0; i < len; i++)
+        {
+            myset.push_back(parr[i]);
+        }
+ 
+        std::vector<std::vector<CITY_INFO> > mysplitset;
+        SplitSet(myset, mysplitset);
+ 
+        double distance = 0;
+        std::string result = "";
+       
+ 
+        finalpath = "";
+        CITY_INFO firstpoint, lastpoint;
+        for(int i = 0; i < mysplitset.size(); i++)
+        {
+            std::vector<CITY_INFO> current = mysplitset[i];
+           
+            if(i == 0)
+            {
+                double distSP = 0;
+                std::string path;
+                TSP_Helper(current, &distSP, path, firstpoint, lastpoint);
+ 
+                //std::cout << "Path: "<< distSP << "\t" << path.c_str() << "\n";
+                distance = distSP;
+                finalpath = path;
+
+            }
+            else
+            {
+                double distSP = 0;
+                std::string path;
+                CITY_INFO fp, lp;
+                TSP_Helper(current, &distSP, path, fp, lp);
+ 
+                distance += distSP;
+                finalpath += path;
 
 
+                // Previous iteration last and current first point distance
+                std::vector<CITY_INFO> prev = mysplitset[i - 1];
+                // optimization required on this line!!!
+                // Distance between the last point and the closet point the current circuit would be taken here instead of first point
+                distance += CalculateDistance(lastpoint, fp);
+                lastpoint = lp;
+                firstpoint = fp;
+ 
+                //std::cout << "Path: " << distance << "\t" << finalpath.c_str() << "\n";
+
+                *dist = distance;
+            }
+        }
+    }
+}
+
+void Preprocessing_Data::TSP_for_histogram(Mat cluster_center)
+{
+	int k = cluster_center.rows;
+	int five_mimutes = histogram.rows;
+	Mat Ev = Mat::zeros(five_mimutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_mimutes;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_center.row(j);
+		}
+	}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(Ev, rDim, component, coeff);
+	Mat Ev_PCA2D = coeff * component;
+	
+	//cout << Ev_PCA2D.rows << " " << Ev_PCA2D.cols << endl;
+	path_index = 0; //initialize TSP path index 
+
+	CITY_INFO polypoints[250];
+	for(int i=0;i<30;i++)
+	{
+		polypoints[i].set_info(int2str(i),i, Ev_PCA2D.at<float>(i,0),  Ev_PCA2D.at<float>(i,1));
+	}
+
+	int NumCities = 30;
+	path_index_vec.resize(1000);
+    double dist = 0;
+    string path;
+	
+	TSP_Start(polypoints, NumCities, &dist, path);
+
+	for(int i=0;i<path_index_vec.size();i++)
+	{
+		for(int j=0;j<path_index_vec[i].size();j++)
+			cout << path_index_vec[i][j] << " ";
+	}
+	cout << endl;
+
+}
+
+void Preprocessing_Data::TSP_for_lab_color(Mat cluster_center)
+{
+	int k = cluster_center.rows;
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(lab, rDim, component, coeff);
+	Mat lab_PCA2D = coeff * component;
+	
+	path_index = 0; //initialize TSP path index 
+
+	CITY_INFO polypoints[100];
+	for(int i=0;i<k;i++)
+	{
+		polypoints[i].set_info(int2str(i),i, lab_PCA2D.at<float>(i,0),  lab_PCA2D.at<float>(i,1));
+	}
+
+	int NumCities = k;
+	path_index_vec.resize(1000);
+    double dist = 0;
+    string path;
+	
+	TSP_Start(polypoints, NumCities, &dist, path);
+
+	for(int i=0;i<path_index_vec.size();i++)
+	{
+		for(int j=0;j<path_index_vec[i].size();j++)
+			cout << path_index_vec[i][j] << " ";
+	}
+	cout << endl;
 
 }

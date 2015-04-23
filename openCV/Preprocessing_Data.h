@@ -8,7 +8,9 @@
 #include "opencv2/highgui/highgui.hpp"
 #include <highgui.h>
 #include <vector>
+#include <string>
 #include "cv.h"
+#include "city_info.h"
 
 #define LENGTH 1000
 
@@ -65,7 +67,15 @@ private:
 	Mat MDS(Mat,int); 
     void Position_by_histogram(Mat&);
 	Mat lab_alignment_by_cube(Mat);
-	void TSP();
+	void TSP_for_histogram(Mat);
+	void TSP_for_lab_color(Mat);
+	void TSP_Start(CITY_INFO *, int, double *, string &);
+	bool SplitSet(const vector<CITY_INFO> &, vector< vector<CITY_INFO> > &);
+	void TSP_Helper(vector<CITY_INFO> &, double *, string &, CITY_INFO &, CITY_INFO &);
+	double CalculateDistance(CITY_INFO, CITY_INFO);
+	string int2str(int);
+
+	vector<vector<CITY_INFO> > mysplitset;
 
 public:
 	Preprocessing_Data();
@@ -82,6 +92,9 @@ public:
 	Mat MDS_1D;
 	Mat Ev_PCA1D;
 	float** adjust_weight;
+
+	vector< vector<int> > path_index_vec;
+	int path_index;
 };
 
 
