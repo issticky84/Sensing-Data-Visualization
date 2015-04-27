@@ -77,6 +77,8 @@ private:
 
 	vector<vector<CITY_INFO> > mysplitset;
 
+	//extern void cuda_kmeans(Mat& , Mat&);
+
 public:
 	Preprocessing_Data();
 

@@ -12,6 +12,8 @@
 using namespace tapkee;
 using namespace Eigen;
 
+extern void cuda_kmeans(int, Mat& , Mat&);
+
 Preprocessing_Data::Preprocessing_Data()
 {
 	read_lab_csv();
@@ -21,7 +23,7 @@ void Preprocessing_Data::start()
 {
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20150105_1958_new.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -37,19 +39,26 @@ void Preprocessing_Data::start()
 	Mat model = set_matrix(attribute_title,attribute_title_size).clone();
 	clock_t end2 = clock();
 	printf("Setting matrix elapsed time: %f\n",double(end2 - begin2) / CLOCKS_PER_SEC);
-	//==================================================//
+
 	output_mat_as_csv_file("model.csv",model);
+	//==============K means clustering with no speed up==================//
+	/*
     int k = 25; 
     Mat cluster_tag; //Tag:0~k-1
     int attempts = 2;//莱赣琌磅︽Ω计
 	Mat cluster_centers;
-	//==============K means clustering==================//
 	//ㄏノk meansだ竤
 	clock_t begin3 = clock();
 	kmeans(model, k, cluster_tag,TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), attempts,KMEANS_PP_CENTERS,cluster_centers);
 	clock_t end3 = clock();
     //TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10, 1),  硂柑Τ把计∕﹚k-means挡材把计琌程Ω计材把计琌弘絋ぶ材把计琌ㄌ酚玡ㄢ把计非絛ㄒい碞琌ㄢ常把酚 or よΑ∕﹚
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
+	*/
+	//================K means clustering with cuda=====================//
+	int k = 25;
+	Mat cluster_tag = Mat::zeros(model.rows,1,CV_32S);
+	Mat cluster_centers = Mat::zeros(k,model.cols,CV_32F);
+	cuda_kmeans(k, cluster_tag, cluster_centers);
 	//=================LAB alignment====================//
 	
 	//////////////////////////////////////////
@@ -64,6 +73,8 @@ void Preprocessing_Data::start()
 	printf("\nLAB alignment elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
 	output_mat_as_csv_file("rgb_mat_raw.csv",rgb_mat2);
 	//==================================================//
+	output_mat_as_csv_file("rgb_mat_old.csv",rgb_mat2);
+	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
 	//sort the cluster by color and generate new cluster tag and cluster center
 	clock_t begin4 = clock();
 	sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
