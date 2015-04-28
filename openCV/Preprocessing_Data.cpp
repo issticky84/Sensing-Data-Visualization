@@ -23,7 +23,7 @@ void Preprocessing_Data::start()
 {
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20150105_1958_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -43,7 +43,7 @@ void Preprocessing_Data::start()
 	output_mat_as_csv_file("model.csv",model);
 	//==============K means clustering with no speed up==================//
 	/*
-    int k = 25; 
+    int k = 24; 
     Mat cluster_tag; //Tag:0~k-1
     int attempts = 2;//應該是執行次數
 	Mat cluster_centers;
@@ -55,12 +55,13 @@ void Preprocessing_Data::start()
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	*/
 	//================K means clustering with cuda=====================//
-	int k = 25;
+	int k = 24;
 	Mat cluster_tag = Mat::zeros(model.rows,1,CV_32S);
 	Mat cluster_centers = Mat::zeros(k,model.cols,CV_32F);
 	cuda_kmeans(k, cluster_tag, cluster_centers);
+
+	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
 	//=================LAB alignment====================//
-	
 	//////////////////////////////////////////
 	//lab_alignment_by_cube(cluster_centers);
 	/////////////////////////////////////////
@@ -71,10 +72,9 @@ void Preprocessing_Data::start()
 	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
 	clock_t end5 = clock();
 	printf("\nLAB alignment elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
-	output_mat_as_csv_file("rgb_mat_raw.csv",rgb_mat2);
 	//==================================================//
 	output_mat_as_csv_file("rgb_mat_old.csv",rgb_mat2);
-	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
+	//====================sort color========================//
 	//sort the cluster by color and generate new cluster tag and cluster center
 	clock_t begin4 = clock();
 	sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
@@ -83,8 +83,7 @@ void Preprocessing_Data::start()
 
 	output_mat_as_csv_file("rgb_mat_sort.csv",rgb_mat2);
 	output_mat_as_csv_file("cluster_center_sort.csv",cluster_centers);
-
-	//==================================================//
+	//=======================voting=================//
 	clock_t begin7 = clock();
 	voting(k,cluster_tag,model.rows); // Type: int	
 	output_mat_as_csv_file_int("histogram.csv",histogram);
@@ -95,6 +94,7 @@ void Preprocessing_Data::start()
 	//TSP_for_histogram(cluster_centers);
 	////////////////////////
 	//===============Position (MDS)=====================//
+	/*
 	clock_t begin6 = clock();
 	//position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
 	MDS_1D = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
@@ -102,29 +102,16 @@ void Preprocessing_Data::start()
 	output_mat_as_csv_file_double("position.csv",position);
 	clock_t end6 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end6 - begin6) / CLOCKS_PER_SEC);
-	cluster_centers.release();
-	
-	//////////////////////////////////////////////////////
+	*/
+	//===============Position (neighbor distance)=====================//
+	clock_t begin8 = clock();
 	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
-	Position_by_histogram(histo_position);
+	Position_by_histogram(histo_position,cluster_centers);
 	position = histo_position.clone();
-	//////////////////////////////////////////////////////
-	//===================PCA raw data 3 dim=======================//
-	//Mat components, result;
-	//int rDim = 3;
-	//rDim = 1;
-	//reduceDimPCA(model, rDim, components, result);
-	//normalize(result.col(0),result.col(0),0,1,NORM_MINMAX); //normalize to 0-1
-	//Mat raw_data_3D = Mat::zeros(result.rows,3,CV_32F);
-	//for(int i=0;i<result.rows;i++)
-	//{
-	//	float r,g,b;
-	//	gray2rgb(result.at<float>(i,0),r,g,b);
-	//	raw_data_3D.at<float>(i,0) = r;
-	//	raw_data_3D.at<float>(i,1) = g;
-	//	raw_data_3D.at<float>(i,2) = b;
-	//}
+	clock_t end8 = clock();
+	printf("Histogram neighbor distance elapsed time: %f\n",double(end8 - begin8) / CLOCKS_PER_SEC);	
 
+	cluster_centers.release();
 	model.release();
 
 }
@@ -785,11 +772,6 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 		}
 	}
 	output_mat_as_csv_file("Ev.csv",Ev);	
-
-	Mat components, coeff;
-	int rDim = 1;
-	reduceDimPCA(Ev, rDim, components, coeff);
-	Ev_PCA1D = coeff * components;
 
 	for(int i=0;i<time_step_amount;i++)
 	{
@@ -2535,27 +2517,43 @@ Mat Preprocessing_Data::normalize_column(Mat col_mat)
 	return output_mat;
 }
 
-void Preprocessing_Data::Position_by_histogram(Mat& histo_position)//histo_position:double
+void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_center)//histo_position:double
 {
 	int k = histogram.cols;
 	int five_minutes = histogram.rows;
 	Mat histogram_copy = histogram.clone();
 	Mat histogram_sort = histogram.clone();
 	
+	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_minutes;i++)
+	{
+		float base = 0;
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_center.row(j);
+		}
+	}
+	output_mat_as_csv_file("Ev.csv",Ev);	
+
+	Mat components, coeff;
+	int rDim = 1;
+	reduceDimPCA(Ev, rDim, components, coeff);
+	Mat Ev_PCA1D = coeff * components;
+
 	class histo_info{
 	public:
 		int* vote;
 		int cols;
 		int key;
 		Mat histo;
-		Mat MDS_1D;
+		//Mat MDS_1D;
 		Mat Ev_PCA1D;
 	};
 	vector< histo_info > histo_vec(five_minutes);
 	for(int i=0;i<five_minutes;i++)
 	{
 		Ev_PCA1D.row(i).copyTo(histo_vec[i].Ev_PCA1D);
-		MDS_1D.row(i).copyTo(histo_vec[i].MDS_1D);
+		//MDS_1D.row(i).copyTo(histo_vec[i].MDS_1D);
 		histogram.row(i).copyTo(histo_vec[i].histo);
 		histo_vec[i].key = i;
 		histo_vec[i].cols = k;
@@ -2615,7 +2613,7 @@ void Preprocessing_Data::Position_by_histogram(Mat& histo_position)//histo_posit
 		histo_position_sort.at<double>(i+1,0) = accumulate_dist;
 	}
 
-	normalize(histo_position_sort.col(0),histo_position_sort.col(0),0,5000,NORM_MINMAX); 
+	normalize(histo_position_sort.col(0),histo_position_sort.col(0),0,6000,NORM_MINMAX); 
 	//cout << endl << dist << endl << endl;
 	//cout << endl << histo_position << endl;
 

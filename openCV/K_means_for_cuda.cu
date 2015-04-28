@@ -16,7 +16,7 @@ using namespace std;
 #define MAX_ITERATION     500
 #define BLOCK_DIM         1024
 //#define CLUSTER_NUM       2
-#define THRESHOLD    0.000001
+#define THRESHOLD    0.0001
 
 void DataSizeRead(char* fileName,int &dataNum,int &dimNum);
 void FileRead(char* fileName,float *point,float *minDist,int *clusterIdx);
@@ -439,7 +439,10 @@ void AdjustCentroid(float *point,int *pClusterIdx,float *pMinDistance,int dataNu
 		// each row contains dimNum+1 cols; 
 		for(int dimIndex=0;dimIndex< dimNum; dimIndex++)
 		{
-			cluster[indexC+dimIndex] /= clusterDataSize[cIndex];
+			////////////////////////////////////////
+			if(clusterDataSize[cIndex]==0) cluster[indexC+dimIndex] = 0.0;
+			else cluster[indexC+dimIndex] /= clusterDataSize[cIndex];
+			////////////////////////////////////////
 		}
 	}
 	/*

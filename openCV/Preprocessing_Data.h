@@ -65,7 +65,7 @@ private:
 	void interpolate_latlon(Mat&,int);
 	void adjust_histogram(Mat,Mat,Mat);
 	Mat MDS(Mat,int); 
-    void Position_by_histogram(Mat&);
+    void Position_by_histogram(Mat&, Mat);
 	Mat lab_alignment_by_cube(Mat);
 	void TSP_for_histogram(Mat);
 	void TSP_for_lab_color(Mat);
@@ -91,8 +91,8 @@ public:
 	Mat position;//double
 	Mat raw_data_3D;//float
 	Mat lab;//float
-	Mat MDS_1D;
-	Mat Ev_PCA1D;
+	//Mat MDS_1D;
+	//Mat Ev_PCA1D;
 	float** adjust_weight;
 
 	vector< vector<int> > path_index_vec;
