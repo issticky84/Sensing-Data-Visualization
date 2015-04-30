@@ -11,6 +11,7 @@
 
 using namespace tapkee;
 using namespace Eigen;
+using namespace boost;
 
 extern void cuda_kmeans(int, Mat& , Mat&);
 
@@ -23,20 +24,28 @@ void Preprocessing_Data::start()
 {
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20141121_0723_new.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20150425_1804.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
 	//==================================================//
-
-	int attribute_title_size = 11;
-	int attribute_title[] = {4,5,6,7,8,9,10,11,12,22,23};//(gravity_x,gravity_y,gravity_z,linear_acc_x),(linear_acc_x,linear_acc_y,linear_acc_z),(gyro_x,gyro_y,gyro_z),(latitude,longitude)
-	int time_title[] = {29,30,31,32,33};//hour(30),minute(31)
-	//int time_title[] = {27,28,29,30,31};//hour(30),minute(31) //0104_2314
+	//int attribute_title[] = {4,5,6,7,8,9,10,11,12,22,23};//(gravity_x,gravity_y,gravity_z),(linear_acc_x,linear_acc_y,linear_acc_z),(gyro_x,gyro_y,gyro_z),(latitude,longitude)
+	int* attribute_title = new int[attribute_index.size()];
+	for(int i=0;i<attribute_index.size();i++)
+	{
+		attribute_title[i] = attribute_index[i] + 1;
+	}
+	
+	//int time_title[] = {29,30,31,32,33};//hour(30),minute(31)
+	int time_title[5];
+	for(int i=0;i<5;i++)
+	{
+		time_title[i] = time_index + i + 1;
+	}	
 	//============Setting matrix for K-means============//
 	clock_t begin2 = clock();
 	set_hour_data(time_title);
-	Mat model = set_matrix(attribute_title,attribute_title_size).clone();
+	Mat model = set_matrix(attribute_title,attribute_index.size()).clone();
 	clock_t end2 = clock();
 	printf("Setting matrix elapsed time: %f\n",double(end2 - begin2) / CLOCKS_PER_SEC);
 
@@ -55,7 +64,7 @@ void Preprocessing_Data::start()
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	*/
 	//================K means clustering with cuda=====================//
-	int k = 24;
+	int k = 20;
 	Mat cluster_tag = Mat::zeros(model.rows,1,CV_32S);
 	Mat cluster_centers = Mat::zeros(k,model.cols,CV_32F);
 	cuda_kmeans(k, cluster_tag, cluster_centers);
@@ -72,12 +81,22 @@ void Preprocessing_Data::start()
 	else if(cluster_centers.cols==2) rgb_mat2 = lab_alignment_dim2 (cluster_centers);
 	clock_t end5 = clock();
 	printf("\nLAB alignment elapsed time: %f\n",double(end5 - begin5) / CLOCKS_PER_SEC);
-	//==================================================//
+
 	output_mat_as_csv_file("rgb_mat_old.csv",rgb_mat2);
-	//====================sort color========================//
+	//=============TSP for lab color================//
+	clock_t begin8 = clock();
+	//TSP_for_lab_color(cluster_centers);
+	Mat lab_color_sort_index = Mat::zeros(k,1,CV_32S);
+	TSP_boost_for_lab_color(cluster_centers,lab_color_sort_index);
+	clock_t end8 = clock();
+	printf("TSP for lab color elapsed time: %f\n",double(end8 - begin8) / CLOCKS_PER_SEC);
+
+	output_mat_as_csv_file_int("lab_color_sort_index.csv",lab_color_sort_index);
+	//====================sort pattern by color========================//
 	//sort the cluster by color and generate new cluster tag and cluster center
 	clock_t begin4 = clock();
-	sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
+	//sort_by_color(k,rgb_mat2,cluster_centers,cluster_tag);
+	sort_by_color_by_TSP_boost(lab_color_sort_index,cluster_centers,cluster_tag,rgb_mat2);
 	clock_t end4 = clock();
 	printf("Sort by Color elapsed time: %f\n",double(end4 - begin4) / CLOCKS_PER_SEC);
 
@@ -90,29 +109,74 @@ void Preprocessing_Data::start()
 	clock_t end7 = clock();
 	printf("Histogram voting elapsed time: %f\n",double(end7 - begin7) / CLOCKS_PER_SEC);
 	////////////////////////
-	//TSP_for_lab_color(cluster_centers);
+	//clock_t begin8 = clock();
+	////TSP_for_lab_color(cluster_centers);
+	//Mat lab_color_sort_index = Mat::zeros(k,1,CV_32S);
+	//TSP_boost_for_lab_color(cluster_centers,lab_color_sort_index);
+	//output_mat_as_csv_file_int("lab_color_sort_index.csv",lab_color_sort_index);
+	//clock_t end8 = clock();
+	//printf("TSP for lab color elapsed time: %f\n",double(end8 - begin8) / CLOCKS_PER_SEC);
 	//TSP_for_histogram(cluster_centers);
 	////////////////////////
 	//===============Position (MDS)=====================//
 	/*
 	clock_t begin6 = clock();
-	//position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
-	MDS_1D = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
+	position = Position_by_MDS(cluster_centers,model,cluster_tag,k).clone(); //Type:double
 	cluster_tag.release();
 	output_mat_as_csv_file_double("position.csv",position);
 	clock_t end6 = clock();
 	printf("MDS Position elapsed time: %f\n",double(end6 - begin6) / CLOCKS_PER_SEC);
 	*/
 	//===============Position (neighbor distance)=====================//
-	clock_t begin8 = clock();
+	Mat histo_sort_index = Mat::zeros(histogram.rows,1,CV_32S); 
+	TSP_boost_for_histogram(cluster_centers,histo_sort_index);
+
+	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
+	Position_by_histogram_TSP(histo_position,histo_sort_index);
+	position = histo_position.clone();
+	/*
+	clock_t begin9 = clock();
 	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
 	Position_by_histogram(histo_position,cluster_centers);
 	position = histo_position.clone();
-	clock_t end8 = clock();
-	printf("Histogram neighbor distance elapsed time: %f\n",double(end8 - begin8) / CLOCKS_PER_SEC);	
+	clock_t end9 = clock();
+	printf("Histogram neighbor distance elapsed time: %f\n",double(end9 - begin9) / CLOCKS_PER_SEC);	
+	*/
 
 	cluster_centers.release();
 	model.release();
+
+}
+
+void Preprocessing_Data::sort_by_color_by_TSP_boost(Mat lab_color_sort_index, Mat& cluster_center, Mat& cluster_tag, Mat& rgb_mat2)
+{
+	Mat cluster_center_old = cluster_center.clone();
+	Mat cluster_tag_old = cluster_tag.clone();
+	Mat rgb_mat2_old = rgb_mat2.clone();
+	int k = cluster_center.rows;
+
+	//注意:row的複製不能用rgb_mat2.row(i) = rgb_mat2_old.row(new_tag).clone();!!!!!!!
+	for(int i=0;i<k;i++)
+	{
+		int key = lab_color_sort_index.at<int>(i,0);
+		cluster_center_old.row(key).copyTo(cluster_center.row(i));
+		rgb_mat2_old.row(key).copyTo(rgb_mat2.row(i));
+	}
+
+	//更新cluster的tag
+	for(int i=0;i<raw_data.size();i++)
+	{
+		int find;
+		for(int j=0;j<k;j++)
+		{
+			if(lab_color_sort_index.at<int>(j,0) == cluster_tag_old.at<int>(i,0))
+			{
+				find = j;
+				break;
+			}
+		}
+		cluster_tag.at<int>(i,0) = find;	
+	}
 
 }
 
@@ -359,19 +423,37 @@ void Preprocessing_Data::read_raw_data()
 	fgets(line,LENGTH,csv_file); //ignore sep=
 	fgets(line,LENGTH,csv_file); //ignore title
 	
-	//token = strtok(line,";");
-	//while(token!=NULL)
-	//{
-	//	title_name.push_back(token);
-	//	token = strtok(NULL,";");
-	//}
-	//for(int i=0;i<title_name.size();i++) cout << title_name[i] << " ";
-	//cout << "title size: " << title_name.size() << endl;
+	token = strtok(line,";");
+	while(token!=NULL)
+	{
+		title_name.push_back(token);
+		token = strtok(NULL,";");
+	}
+	for(int i=0;i<title_name.size();i++)
+	{
+		//cout << title_name[i] << " ";
+		if(title_name[i].compare("GRAVITY X (m/s簡)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("GRAVITY Y (m/s簡)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("GRAVITY Z (m/s簡)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("LINEAR ACCELERATION X (m/s簡)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("LINEAR ACCELERATION Y (m/s簡)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("LINEAR ACCELERATION Z (m/s簡)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("GYROSCOPE X (rad/s)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("GYROSCOPE Y (rad/s)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("GYROSCOPE Z (rad/s)")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("LOCATION Latitude : ")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("LOCATION Longitude : ")==0){ attribute_index.push_back(i); }
+		else if(title_name[i].compare("YYYY-MO-DD HH-MI-SS_SSS\n")==0){ time_index = i; }
+	}
+
+	//for(int i=0;i<attribute_index.size();i++)
+	//	cout << attribute_index[i] << endl;
+
+	cout << "time_index " << time_index << endl;
 
 	while(!feof(csv_file))
 	{
 		fgets(line,LENGTH,csv_file);
-		//token = strtok(line,";");
 		token = strtok(line,";");
 		raw_data.push_back(vector<float> (1));
 		//printf("%s ",token);
@@ -379,10 +461,15 @@ void Preprocessing_Data::read_raw_data()
 		{
 			raw_data.back().push_back(atof(token));
 			//token = strtok(NULL," ;:");
-			token = strtok(NULL," ;:/");
+			token = strtok(NULL," ;:");
 		}
 	}
 
+	//for(int i=0;i<33;i++)
+	//{
+	//	cout << raw_data[0][i] << " ";
+	//}
+	//cout << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][29] << " " << raw_data[0][30] << " " << raw_data[0][31] << " " << raw_data[0][32]  << " " << raw_data[0][33] << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][27] << " " << raw_data[0][28] << " " << raw_data[0][29] << " " << raw_data[0][30]  << " " << raw_data[0][31] << endl;
 	//cout << raw_data[0][1] << " " << raw_data[0][31] << " " << raw_data[0][32] << " " << raw_data[0][33] << " " << raw_data[0][34]  << " " << raw_data[0][35] << endl;
@@ -480,16 +567,16 @@ void Preprocessing_Data::set_hour_data(int time_title[])
 	*/
 }
 
-Mat Preprocessing_Data::Gaussian_filter(int attribute_title[])
+Mat Preprocessing_Data::Gaussian_filter(int* attribute_title)
 {
-	Mat Gaussian_filter_mat(raw_data.size(),11, CV_32F);
+	Mat Gaussian_filter_mat(raw_data.size(),attribute_index.size(), CV_32F);
 
 	//Apply Gaussian filter to raw data(0~8)
 	for(int i=0;i<raw_data.size();i++)
 	{
-		for(int j=0;j<11;j++)
+		for(int j=0;j<attribute_index.size();j++)
 		{
-			Gaussian_filter_mat.at<float>(i,j) = raw_data[i][attribute_title[j]];
+			Gaussian_filter_mat.at<float>(i,j) = raw_data[i][ attribute_title[j] ];
 		}
 	}
 	//output_mat_as_csv_file("raw_data_mat.csv",Gaussian_filter_mat);
@@ -527,7 +614,7 @@ Mat Preprocessing_Data::Gaussian_filter(int attribute_title[])
 	return Gaussian_filter_mat;
 }
 
-Mat Preprocessing_Data::set_matrix(int attribute_title[],int attribute_title_size)
+Mat Preprocessing_Data::set_matrix(int* attribute_title,int attribute_title_size)
 {
 	Mat handle_mat;
 	Mat handle_mat_raw;
@@ -764,7 +851,6 @@ void Preprocessing_Data::distance_by_GMM(Mat& histo_coeff, Mat& Ev, Mat cluster_
 	int time_step_amount = floor(raw_data.size()/600.0);
 	for(int i=0;i<time_step_amount;i++)
 	{
-		float base = 0;
 		for(int j=0;j<k;j++)
 		{
 			//Ev.row(i) += adjust_weight[i][j]*cluster_centers.row(j);
@@ -1793,7 +1879,7 @@ Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	vector<float> move_vector;
-	for(float k=-10.0;k<=10.0;k+=1.0)
+	for(float k=-5.0;k<=5.0;k+=1.0)
 		move_vector.push_back(k);
 
 	//vector<float> scale_vector;
@@ -2517,11 +2603,53 @@ Mat Preprocessing_Data::normalize_column(Mat col_mat)
 	return output_mat;
 }
 
-void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_center)//histo_position:double
+void Preprocessing_Data::Position_by_histogram_TSP(Mat& histo_position,Mat histo_sort_index)
 {
 	int k = histogram.cols;
 	int five_minutes = histogram.rows;
 	Mat histogram_copy = histogram.clone();
+	Mat dist = Mat::zeros(1,five_minutes-1,CV_64F);
+
+	output_mat_as_csv_file_int("histo_sort_index.csv",histo_sort_index);
+
+	for(int i=0;i<five_minutes-1;i++)
+	{
+		int index = histo_sort_index.at<int>(i,0);
+		int index2 = histo_sort_index.at<int>(i+1,0);
+		double vote_dist = 0.0;
+		for(int j=0;j<k;j++)
+		{
+			vote_dist += abs( histogram_copy.at<int>(index,j) - histogram_copy.at<int>(index2,j) );
+		}
+
+		dist.at<double>(0,i) = pow(vote_dist,5);
+	}
+	output_mat_as_csv_file_double("vote_dist.csv",dist.t());
+	
+	Mat histo_position_sort = Mat::zeros(five_minutes,1,CV_64F);
+	histo_position_sort.at<double>(0,0) = 0.0;
+	double accumulate_dist = 0.0;
+	for(int i=0;i<five_minutes-1;i++)
+	{
+		accumulate_dist += dist.at<double>(0,i);
+		histo_position_sort.at<double>(i+1,0) = accumulate_dist;
+	}
+	//output_mat_as_csv_file_double("histo_position_sort.csv",histo_position_sort);
+
+	normalize(histo_position_sort.col(0),histo_position_sort.col(0),0,7000,NORM_MINMAX); 
+
+	for(int i=0;i<five_minutes;i++)
+	{
+		int index = histo_sort_index.at<int>(i,0);
+		histo_position.at<double>(index,0) = histo_position_sort.at<double>(i,0);
+	}
+}
+
+void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_center)//histo_position:double
+{
+	int k = histogram.cols;
+	int five_minutes = histogram.rows;
+	//Mat histogram_copy = histogram.clone();
 	Mat histogram_sort = histogram.clone();
 	
 	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
@@ -2546,14 +2674,12 @@ void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_
 		int cols;
 		int key;
 		Mat histo;
-		//Mat MDS_1D;
 		Mat Ev_PCA1D;
 	};
 	vector< histo_info > histo_vec(five_minutes);
 	for(int i=0;i<five_minutes;i++)
 	{
 		Ev_PCA1D.row(i).copyTo(histo_vec[i].Ev_PCA1D);
-		//MDS_1D.row(i).copyTo(histo_vec[i].MDS_1D);
 		histogram.row(i).copyTo(histo_vec[i].histo);
 		histo_vec[i].key = i;
 		histo_vec[i].cols = k;
@@ -2563,32 +2689,24 @@ void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_
 			histo_vec[i].vote[j] = histogram.at<int>(i,j);
 		}
 	}
-
+	
 	class sort_by_votes{
 	public:
 		inline bool operator() (histo_info& h1, histo_info& h2)
 		{
-			//for(int i=0;i<h1.cols;i++)
-			//{
-			//	if(h1.vote[i] != h2.vote[i])
-			//	{
-			//		return h2.vote[i] < h1.vote[i] ;
-			//	}
-			//}
-			//return false;
-			//return h1.MDS_1D.at<double>(0,0) < h2.MDS_1D.at<double>(0,0);
 			return h1.Ev_PCA1D.at<float>(0,0) < h2.Ev_PCA1D.at<float>(0,0);
 		}
 	};
 
 	sort(histo_vec.begin(), histo_vec.end(), sort_by_votes() );
+	
 
 	//for(int i=0;i<five_minutes;i++)
 	//	cout << histo_vec[i].key << " " ;
 	//cout << endl;
 
 	Mat dist = Mat::zeros(1,five_minutes-1,CV_64F);
-	double total = 0.0;
+
 	for(int i=0;i<five_minutes-1;i++)
 	{
 		double vote_dist = 0.0;
@@ -2598,8 +2716,6 @@ void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_
 			//vote_dist += sqrt( histo_vec[i].histo.at<int>(0,j)/600.0 * histo_vec[i+1].histo.at<int>(0,j)/600.0 );
 		}
 		//vote_dist = -log( MAX(vote_dist,0.0000001) );
-
-		//total += vote_dist;
 		dist.at<double>(0,i) = pow(vote_dist,5);
 	}
 	output_mat_as_csv_file_double("vote_dist.csv",dist.t());
@@ -2827,9 +2943,9 @@ void Preprocessing_Data::TSP_Start(CITY_INFO *parr, int len, double *dist, std::
 void Preprocessing_Data::TSP_for_histogram(Mat cluster_center)
 {
 	int k = cluster_center.rows;
-	int five_mimutes = histogram.rows;
-	Mat Ev = Mat::zeros(five_mimutes,cluster_center.cols,CV_32F);
-	for(int i=0;i<five_mimutes;i++)
+	int five_minutes = histogram.rows;
+	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_minutes;i++)
 	{
 		for(int j=0;j<k;j++)
 		{
@@ -2867,6 +2983,128 @@ void Preprocessing_Data::TSP_for_histogram(Mat cluster_center)
 
 }
 
+int myrandom (int i) { return std::rand()%i;}
+
+void Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
+{
+	//int five_minutes = histogram.rows;
+	int row = input_mat.rows;
+
+	typedef vector<simple_point<double> > PositionVec;
+	typedef adjacency_matrix<undirectedS, no_property,
+	property <edge_weight_t, double> > Graph;
+	typedef graph_traits<Graph>::vertex_descriptor Vertex;
+	typedef vector<Vertex> Container;
+	typedef property_map<Graph, edge_weight_t>::type WeightMap;
+	typedef property_map<Graph, vertex_index_t>::type VertexMap;
+
+	vector<int> random_index(row);
+	for(int i=0;i<row;i++) random_index[i] = i;
+	
+	srand ( unsigned ( time(0) ) );
+	random_shuffle ( random_index.begin(), random_index.end(), myrandom );
+	for(int i=0;i<random_index.size();i++) cout << random_index[i] << " ";
+	cout << endl;
+
+	PositionVec position_vec;
+	for(int i=0;i<row;i++)
+	{
+		simple_point<double> vertex;
+		vertex.x = input_mat.at<float>(i,0);
+		vertex.y = input_mat.at<float>(i,1);
+		//vertex.x = input_mat.at<float>(random_index[i],0);
+		//vertex.y = input_mat.at<float>(random_index[i],1);
+		position_vec.push_back(vertex);
+	}
+
+	//cout << "position_vec size " << position_vec.size() << endl;
+
+	Container c;
+	Graph g(position_vec.size());
+	WeightMap weight_map(get(edge_weight, g));
+	VertexMap v_map = get(vertex_index, g);
+
+	connectAllEuclidean(g, position_vec, weight_map, v_map);
+
+	metric_tsp_approx_tour(g, back_inserter(c));
+
+	int i = 0;
+	for (vector<Vertex>::iterator itr = c.begin(); itr != c.end(); ++itr)
+	{
+		//cout << *itr << " ";
+		sort_index.at<int>(i,0) = *itr;
+		i++;
+		if(i==row) break;
+	}
+
+	//cout << "i " << i << endl;
+	cout << endl << endl;
+
+	c.clear();
+
+	//checkAdjList(position_vec);
+
+	//metric_tsp_approx_from_vertex(g, *vertices(g).first,
+	//	get(edge_weight, g), get(vertex_index, g),
+	//	tsp_tour_visitor<back_insert_iterator<vector<Vertex> > >
+	//	(back_inserter(c)));
+
+	//for (vector<Vertex>::iterator itr = c.begin(); itr != c.end(); ++itr)
+	//{
+	//	cout << *itr << " ";
+	//}
+	//cout << endl << endl;
+
+	//c.clear();
+   
+	double len(0.0);
+	try {
+		metric_tsp_approx(g, make_tsp_tour_len_visitor(g, back_inserter(c), len, weight_map));
+	}
+	catch (const bad_graph& e) {
+		cerr << "bad_graph: " << e.what() << endl;
+		return;
+	}
+
+	cout << "Number of points: " << num_vertices(g) << endl;
+	cout << "Number of edges: " << num_edges(g) << endl;
+	cout << "Length of Tour: " << len << endl;
+
+}
+
+void Preprocessing_Data::TSP_boost_for_histogram(Mat cluster_center, Mat& histo_sort_index)
+{
+	int k = cluster_center.rows;
+	int five_minutes = histogram.rows;
+	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_minutes;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_center.row(j);
+		}
+	}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(Ev, rDim, component, coeff);
+	Mat Ev_PCA2D = coeff * component;
+
+	TSP_boost(Ev_PCA2D, histo_sort_index);
+}
+
+void Preprocessing_Data::TSP_boost_for_lab_color(Mat cluster_center, Mat& lab_color_sort_index)
+{
+	int k = cluster_center.rows;
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(lab, rDim, component, coeff);
+	Mat lab_PCA2D = coeff * component;
+
+	TSP_boost(lab_PCA2D, lab_color_sort_index);
+}
+
 void Preprocessing_Data::TSP_for_lab_color(Mat cluster_center)
 {
 	int k = cluster_center.rows;
@@ -2898,4 +3136,97 @@ void Preprocessing_Data::TSP_for_lab_color(Mat cluster_center)
 	}
 	cout << endl;
 
+}
+
+//add edges to the graph (for each node connect it to all other nodes)
+template<typename VertexListGraph, typename PointContainer,
+    typename WeightMap, typename VertexIndexMap>
+void Preprocessing_Data::connectAllEuclidean(VertexListGraph& g,
+                        const PointContainer& points,
+                        WeightMap wmap,            // Property maps passed by value
+                        VertexIndexMap vmap       // Property maps passed by value
+                        )
+{
+    using namespace boost;
+    using namespace std;
+    typedef typename graph_traits<VertexListGraph>::edge_descriptor Edge;
+    typedef typename graph_traits<VertexListGraph>::vertex_iterator VItr;
+
+    Edge e;
+    bool inserted;
+
+    pair<VItr, VItr> verts(vertices(g));
+    for (VItr src(verts.first); src != verts.second; src++)
+    {
+        for (VItr dest(src); dest != verts.second; dest++)
+        {
+            if (dest != src)
+            {
+                double weight(sqrt(pow(
+                    static_cast<double>(points[vmap[*src]].x -
+                        points[vmap[*dest]].x), 2.0) +
+                    pow(static_cast<double>(points[vmap[*dest]].y -
+                        points[vmap[*src]].y), 2.0)));
+
+                boost::tie(e, inserted) = add_edge(*src, *dest, g);
+
+                wmap[e] = weight;
+            }
+
+        }
+
+    }
+}
+
+template <typename PositionVec>
+void Preprocessing_Data::checkAdjList(PositionVec v)
+{
+    using namespace std;
+    using namespace boost;
+
+    typedef adjacency_list<listS, listS, undirectedS> Graph;
+    typedef graph_traits<Graph>::vertex_descriptor Vertex;
+    typedef graph_traits <Graph>::edge_descriptor Edge;
+    typedef vector<Vertex> Container;
+    typedef map<Vertex, std::size_t> VertexIndexMap;
+    typedef map<Edge, double> EdgeWeightMap;
+    typedef associative_property_map<VertexIndexMap> VPropertyMap;
+    typedef associative_property_map<EdgeWeightMap> EWeightPropertyMap;
+    typedef graph_traits<Graph>::vertex_iterator VItr;
+
+    Container c;
+    EdgeWeightMap w_map;
+    VertexIndexMap v_map;
+    VPropertyMap v_pmap(v_map);
+    EWeightPropertyMap w_pmap(w_map);
+
+    Graph g(v.size());
+
+    //create vertex index map
+    VItr vi, ve;
+    int idx(0);
+    for (boost::tie(vi, ve) = vertices(g); vi != ve; ++vi)
+    {
+        Vertex v(*vi);
+        v_pmap[v] = idx;
+        idx++;
+    }
+
+    connectAllEuclidean(g, v, w_pmap,
+        v_pmap);
+
+    metric_tsp_approx_from_vertex(g,
+        *vertices(g).first,
+        w_pmap,
+        v_pmap,
+        tsp_tour_visitor<back_insert_iterator<Container > >
+        (back_inserter(c)));
+
+    //cout << "adj_list" << endl;
+    //for (Container::iterator itr = c.begin(); itr != c.end(); ++itr) {
+    //    cout << v_map[*itr] << " ";
+    //}
+    //cout << endl << endl;
+
+    c.clear();
 }

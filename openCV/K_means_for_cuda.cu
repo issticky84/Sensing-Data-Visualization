@@ -59,7 +59,8 @@ void cuda_kmeans(int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
 	// pre-processing 
 	//cout << "loading file ..." << endl;
 	DataSizeRead(path,dataPointSize,dataDimension); // check right 
-	GRID_DIM = dataPointSize % BLOCK_DIM ? dataPointSize/BLOCK_DIM +1: dataPointSize/BLOCK_DIM;  
+	GRID_DIM =  dataPointSize/BLOCK_DIM + (dataPointSize % BLOCK_DIM == 0 ? 0 : 1); 
+	//GRID_DIM = dataPointSize % BLOCK_DIM ? dataPointSize/BLOCK_DIM +1: dataPointSize/BLOCK_DIM;  
 	//cout << "initializing data ..." << endl;
 	// points and clusters memory cpy ;
 	DataPoints   = new float[dataPointSize*dataDimension]; 
@@ -148,8 +149,8 @@ void cuda_kmeans(int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
 		cudaMemcpy(ClusterIndex,GPU_ClusterIndex,sizeof(int)*dataPointSize*1 ,cudaMemcpyDeviceToHost);
 	}
 	end = ms_time();
-	cout << "total iteration = " << iteration << endl;
-	cout << " execution time " << double(end-start)  << "ms"<<endl;
+	cout << "Total Iteration = " << iteration << endl;
+	cout << "Execution Time " << double(end-start)  << "ms"<<endl;
 	if(clusterNum <= 20)
 	{
 		printResult(DataPoints,ClusterIndex ,dataPointSize,clusterNum,dataDimension);

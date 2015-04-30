@@ -12,6 +12,19 @@
 #include "cv.h"
 #include "city_info.h"
 
+//////
+#include <boost/assert.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/random.hpp>
+#include <boost/timer.hpp>
+#include <boost/integer_traits.hpp>
+#include <boost/graph/adjacency_matrix.hpp>
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/simple_point.hpp>
+#include <boost/graph/metric_tsp_approx.hpp>
+#include <boost/graph/graphviz.hpp>
+//////
+
 #define LENGTH 1000
 
 using namespace std; 
@@ -19,6 +32,27 @@ using namespace cv;
 //using namespace tapkee;
 //using namespace Eigen;
 
+enum{
+	gravity_x = 0,
+	gravity_y,
+	gravity_z,
+	linear_acc_x,
+	linear_acc_y,
+	linear_acc_z,
+	gyro_x,
+	gyro_y,
+	gyro_z,
+	latitude,
+	longitude
+};
+
+template<typename PointType>
+struct cmpPnt
+{
+    bool operator()(const boost::simple_point<PointType>& l,
+                    const boost::simple_point<PointType>& r) const
+    { return (l.x > r.x); }
+};
 
 class Preprocessing_Data
 {
@@ -37,8 +71,8 @@ private:
 	float norm_value(float,float,float);
 	float DistanceOfLontitudeAndLatitude(float,float,float,float);
 	void set_hour_data(int time_title[]);
-	Mat Gaussian_filter(int attribute_title[]);
-	Mat set_matrix(int attribute_title[],int);
+	Mat Gaussian_filter(int*);
+	Mat set_matrix(int*,int);
 	void voting(int,Mat,int);
 	Mat Position_by_MDS(Mat,Mat,Mat,int);
 	Mat lab_alignment(Mat);
@@ -66,6 +100,7 @@ private:
 	void adjust_histogram(Mat,Mat,Mat);
 	Mat MDS(Mat,int); 
     void Position_by_histogram(Mat&, Mat);
+	void Position_by_histogram_TSP(Mat&, Mat);
 	Mat lab_alignment_by_cube(Mat);
 	void TSP_for_histogram(Mat);
 	void TSP_for_lab_color(Mat);
@@ -77,7 +112,15 @@ private:
 
 	vector<vector<CITY_INFO> > mysplitset;
 
-	//extern void cuda_kmeans(Mat& , Mat&);
+	template<typename VertexListGraph, typename PointContainer,typename WeightMap, typename VertexIndexMap>
+	void connectAllEuclidean(VertexListGraph& ,const PointContainer&,WeightMap ,VertexIndexMap vmap);
+	//void testScalability(unsigned );
+	template <typename PositionVec> void checkAdjList(PositionVec);
+
+	void TSP_boost_for_histogram(Mat, Mat&);
+	void TSP_boost_for_lab_color(Mat, Mat&);
+	void TSP_boost(Mat, Mat&);
+	void sort_by_color_by_TSP_boost(Mat, Mat&, Mat&, Mat&);
 
 public:
 	Preprocessing_Data();
@@ -91,12 +134,13 @@ public:
 	Mat position;//double
 	Mat raw_data_3D;//float
 	Mat lab;//float
-	//Mat MDS_1D;
-	//Mat Ev_PCA1D;
 	float** adjust_weight;
 
 	vector< vector<int> > path_index_vec;
 	int path_index;
+
+	vector<int> attribute_index;
+	int time_index;
 };
 
 
