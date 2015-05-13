@@ -118,9 +118,21 @@ private:
 	template <typename PositionVec> void checkAdjList(PositionVec);
 
 	void TSP_boost_for_histogram(Mat, Mat&);
+	void TSP_boost_for_histogram_coarse_to_fine(Mat, Mat&);
+	void TSP_boost_for_histogram_coarse_to_fine2(Mat, Mat&);
+	void TSP_boost_for_histogram_coarse_to_fine3(Mat, Mat&);
 	void TSP_boost_for_lab_color(Mat, Mat&);
-	void TSP_boost(Mat, Mat&);
+	void TSP_boost_for_lab_color_coarse_to_fine(Mat, Mat&);
+	void TSP_boost_for_lab_color_coarse_to_fine2(Mat, Mat&);
+	void TSP_boost_for_lab_color_coarse_to_fine3(Mat, Mat&);
+	double TSP_boost(Mat, Mat&);
+	double TSP_boost(Mat, Mat&, Mat&);
 	void sort_by_color_by_TSP_boost(Mat, Mat&, Mat&, Mat&);
+
+	double db_index(Mat, Mat, Mat);
+	double compute_dist(Mat,Mat,int);
+
+	int Find_Cluster_By_Elbow_Method(Mat);
 
 public:
 	Preprocessing_Data();
@@ -141,6 +153,7 @@ public:
 
 	vector<int> attribute_index;
 	int time_index;
+
 };
 
 

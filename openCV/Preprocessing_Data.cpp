@@ -13,7 +13,7 @@ using namespace tapkee;
 using namespace Eigen;
 using namespace boost;
 
-extern void cuda_kmeans(int, Mat& , Mat&);
+extern void cuda_kmeans(Mat, int, Mat& , Mat&);
 
 Preprocessing_Data::Preprocessing_Data()
 {
@@ -24,7 +24,7 @@ void Preprocessing_Data::start()
 {
 	//=================Read CSV file====================//
 	clock_t begin1 = clock();
-	strcpy(file_csv_data,"../../../../csv_data/BigData_20150425_1804.csv");
+	strcpy(file_csv_data,"../../../../csv_data/BigData_20150509_2203.csv");
 	read_raw_data(); 
 	clock_t end1 = clock();
 	printf("Read csv elapsed time: %f\n",double(end1 - begin1) / CLOCKS_PER_SEC);
@@ -64,11 +64,25 @@ void Preprocessing_Data::start()
 	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
 	*/
 	//================K means clustering with cuda=====================//
-	int k = 20;
+	//int k = Find_Cluster_By_Elbow_Method(model) + 12;
+	int k = 16;
 	Mat cluster_tag = Mat::zeros(model.rows,1,CV_32S);
 	Mat cluster_centers = Mat::zeros(k,model.cols,CV_32F);
-	cuda_kmeans(k, cluster_tag, cluster_centers);
 
+	clock_t begin3 = clock();
+	cuda_kmeans(model, k, cluster_tag, cluster_centers);
+	clock_t end3 = clock();
+	printf("Kmeans (K = %d) elapsed time: %f\n",k,double(end3 - begin3) / CLOCKS_PER_SEC);
+	//Mat cluster_tag_2,cluster_centers_2;
+	//for(int i=8;i<36;i+=4)
+	//{
+	//	cluster_tag_2 = Mat::zeros(model.rows,1,CV_32S);
+	//	cluster_centers_2 = Mat::zeros(i,model.cols,CV_32F);
+	//	cuda_kmeans(i, cluster_tag_2, cluster_centers_2);
+
+	//	cout << "cluster " << i << endl;
+	//	db_index(model,cluster_centers_2,cluster_tag_2);
+	//}
 	output_mat_as_csv_file("cluster_center_old.csv",cluster_centers);
 	//=================LAB alignment====================//
 	//////////////////////////////////////////
@@ -87,7 +101,8 @@ void Preprocessing_Data::start()
 	clock_t begin8 = clock();
 	//TSP_for_lab_color(cluster_centers);
 	Mat lab_color_sort_index = Mat::zeros(k,1,CV_32S);
-	TSP_boost_for_lab_color(cluster_centers,lab_color_sort_index);
+	//TSP_boost_for_lab_color(lab,lab_color_sort_index);
+	TSP_boost_for_lab_color_coarse_to_fine3(lab,lab_color_sort_index);
 	clock_t end8 = clock();
 	printf("TSP for lab color elapsed time: %f\n",double(end8 - begin8) / CLOCKS_PER_SEC);
 
@@ -108,16 +123,6 @@ void Preprocessing_Data::start()
 	output_mat_as_csv_file_int("histogram.csv",histogram);
 	clock_t end7 = clock();
 	printf("Histogram voting elapsed time: %f\n",double(end7 - begin7) / CLOCKS_PER_SEC);
-	////////////////////////
-	//clock_t begin8 = clock();
-	////TSP_for_lab_color(cluster_centers);
-	//Mat lab_color_sort_index = Mat::zeros(k,1,CV_32S);
-	//TSP_boost_for_lab_color(cluster_centers,lab_color_sort_index);
-	//output_mat_as_csv_file_int("lab_color_sort_index.csv",lab_color_sort_index);
-	//clock_t end8 = clock();
-	//printf("TSP for lab color elapsed time: %f\n",double(end8 - begin8) / CLOCKS_PER_SEC);
-	//TSP_for_histogram(cluster_centers);
-	////////////////////////
 	//===============Position (MDS)=====================//
 	/*
 	clock_t begin6 = clock();
@@ -128,12 +133,18 @@ void Preprocessing_Data::start()
 	printf("MDS Position elapsed time: %f\n",double(end6 - begin6) / CLOCKS_PER_SEC);
 	*/
 	//===============Position (neighbor distance)=====================//
+	
 	Mat histo_sort_index = Mat::zeros(histogram.rows,1,CV_32S); 
-	TSP_boost_for_histogram(cluster_centers,histo_sort_index);
-
+	//TSP_boost_for_histogram(cluster_centers,histo_sort_index);
+	TSP_boost_for_histogram_coarse_to_fine(cluster_centers,histo_sort_index);
+	output_mat_as_csv_file_int("histo_sort_index.csv",histo_sort_index);
+	
+	
 	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
 	Position_by_histogram_TSP(histo_position,histo_sort_index);
 	position = histo_position.clone();
+	
+	
 	/*
 	clock_t begin9 = clock();
 	Mat histo_position = Mat::zeros(histogram.rows,1,CV_64F);
@@ -146,6 +157,158 @@ void Preprocessing_Data::start()
 	cluster_centers.release();
 	model.release();
 
+}
+
+int Preprocessing_Data::Find_Cluster_By_Elbow_Method(Mat model)
+{
+	
+	int fit_k;
+	for(int k=4;k<40;k+=4)
+	{
+		cout << "Cluster: " << k << endl;
+		int dim = model.cols;
+		Mat cluster_tag = Mat::zeros(model.rows,1,CV_32S);
+		Mat cluster_centers = Mat::zeros(k,dim,CV_32F);
+		cuda_kmeans(model, k, cluster_tag, cluster_centers);
+	
+		class cluster{
+		public:
+			int num;
+			//Mat cov;
+		};
+		vector<cluster> cluster_vec(k);
+
+		for(int i=0;i<cluster_vec.size();i++)
+		{
+			//cluster_vec[i].cov = Mat::zeros(dim,dim,CV_32F);
+			cluster_vec[i].num = 0;
+		}
+
+		for(int i=0;i<model.rows;i++)
+		{
+			int tag = cluster_tag.at<int>(i,0);
+			//cluster_vec[tag].cov += ( model.row(i) - cluster_centers.row(tag) ).t() * ( model.row(i) - cluster_centers.row(tag) );
+			cluster_vec[tag].num++;
+		}
+		/*
+		for(int i=0;i<k;i++)
+		{
+			cluster_vec[i].cov /= cluster_vec[i].num;
+		}
+
+		Mat within_class_scatter_matrix = Mat::zeros(dim,dim,CV_32F);
+		for(int i=0;i<k;i++)
+		{
+			within_class_scatter_matrix += ((float)cluster_vec[i].num/model.rows) * cluster_vec[i].cov;
+		}
+		*/
+
+		//Scalar trace_Sw = trace(within_class_scatter_matrix);
+		//cout << "trace of within class " << trace_Sw.val[0,0] << endl;
+
+		Mat mean;
+		Mat mixture_scatter_matrix;
+		calcCovMat(model, mean, mixture_scatter_matrix);
+
+		Mat between_class_scatter_matrix = Mat::zeros(dim,dim,CV_32F);
+		for(int i=0;i<k;i++)
+		{
+			between_class_scatter_matrix += ((float)cluster_vec[i].num/model.rows) * ( cluster_centers.row(i) - mean ).t() * ( cluster_centers.row(i) - mean );
+		}
+
+		Scalar trace_Sb = trace(between_class_scatter_matrix);
+		printf("trace of between class: %f\n",trace_Sb.val[0,0]);
+
+		Scalar trace_Sm = trace(mixture_scatter_matrix);
+		printf("trace of mixutre class: %f\n",trace_Sm.val[0,0]);
+
+		cout << "variance " << trace_Sb.val[0,0] / trace_Sm.val[0,0] << endl;
+		if(trace_Sb.val[0,0] / trace_Sm.val[0,0] > 0.9)
+		{
+			fit_k = k;
+			break;
+		}
+	}
+
+	return fit_k;
+	//return (fit_k=fit_k<12?12:fit_k);
+	
+}	
+
+double Preprocessing_Data::compute_dist(Mat m1,Mat m2,int dim)
+{
+	double dist = 0.0;
+	for(int i=0;i<m1.rows;i++)
+	{
+		for(int j=0;j<dim;j++)
+		{
+			dist += sqrt( (m1.at<double>(i,j) - m2.at<double>(i,j) )*(m1.at<double>(i,j) - m2.at<double>(i,j) ) );
+		}
+	}
+
+	return dist;
+}
+
+double Preprocessing_Data::db_index(Mat model, Mat cluster_center, Mat cluster_tag)
+{
+	int k = cluster_center.rows;
+	int dim = cluster_center.cols;
+	double* Ti = new double[k];
+	for(int i=0;i<k;i++) Ti[i] = 0.0;
+	
+	Mat Si = Mat::zeros(k,1,CV_64F);
+	for(int i=0;i<model.rows;i++)
+	{
+		int c = cluster_tag.at<int>(i,0);
+		Ti[c]++;
+		Mat dist = Mat::zeros(1,1,CV_64F);
+		dist.at<double>(0,0) = compute_dist(model.row(i), cluster_center.row(c), dim);
+		//add(dist.row(0),Si.row(c),Si.row(c));
+		Si.at<double>(c,0) += dist.at<double>(0,0);
+	}
+
+	for(int i=0;i<k;i++)
+	{
+		Si.at<double>(i,0) /= Ti[i];
+	}
+	
+	output_mat_as_csv_file_double("Si.csv",Si);
+
+	Mat Mij = Mat::zeros(k,k,CV_64F);
+	for(int i=0;i<k;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			if(i==j) continue;
+			Mij.at<double>(i,j) = compute_dist(cluster_center.row(i),cluster_center.row(j), dim);
+		}
+	}
+	output_mat_as_csv_file_double("Mij.csv",Mij);
+
+	Mat Rij = Mat::zeros(k,k,CV_64F);
+	for(int i=0;i<k;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			if(i==j) continue;
+			Rij.at<double>(i,j) = (Si.at<double>(i,0) + Si.at<double>(j,0)) / Mij.at<double>(i,j);
+		}
+	}
+	output_mat_as_csv_file_double("Rij.csv",Rij);
+
+	double* Di = new double[k];
+	double DB_value = 0.0;
+	double min, max;
+	for(int i=0;i<k;i++)
+	{
+		minMaxLoc(Rij.row(i), &min, &max);
+		Di[i] = max;
+		DB_value += Di[i];
+	}
+
+	printf("DB value: %f\n",DB_value);
+
+	return DB_value;
 }
 
 void Preprocessing_Data::sort_by_color_by_TSP_boost(Mat lab_color_sort_index, Mat& cluster_center, Mat& cluster_tag, Mat& rgb_mat2)
@@ -1941,14 +2104,14 @@ Mat Preprocessing_Data::lab_alignment_new(Mat cluster_center)
 						//cout << align_mat << endl;
 						//system("pause");
 
-						//for(int i=0;i<align_mat.rows;i++)
-						//{
-						//	if( (align_mat.at<float>(i,0)<luminance_threshold) || (align_mat.at<float>(i,0)>90.0) )
-						//	{
-						//		flag = false;
-						//		break;
-						//	}
-						//}
+						for(int i=0;i<align_mat.rows;i++)
+						{
+							if( (align_mat.at<float>(i,0)<luminance_threshold) || (align_mat.at<float>(i,0)>85.0) )
+							{
+								flag = false;
+								break;
+							}
+						}
 
 						if(flag)
 						{
@@ -2716,7 +2879,7 @@ void Preprocessing_Data::Position_by_histogram(Mat& histo_position, Mat cluster_
 			//vote_dist += sqrt( histo_vec[i].histo.at<int>(0,j)/600.0 * histo_vec[i+1].histo.at<int>(0,j)/600.0 );
 		}
 		//vote_dist = -log( MAX(vote_dist,0.0000001) );
-		dist.at<double>(0,i) = pow(vote_dist,5);
+		dist.at<double>(0,i) = pow(vote_dist,8);
 	}
 	output_mat_as_csv_file_double("vote_dist.csv",dist.t());
 	
@@ -2985,7 +3148,7 @@ void Preprocessing_Data::TSP_for_histogram(Mat cluster_center)
 
 int myrandom (int i) { return std::rand()%i;}
 
-void Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
+double Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
 {
 	//int five_minutes = histogram.rows;
 	int row = input_mat.rows;
@@ -2998,6 +3161,7 @@ void Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
 	typedef property_map<Graph, edge_weight_t>::type WeightMap;
 	typedef property_map<Graph, vertex_index_t>::type VertexMap;
 
+	/*
 	vector<int> random_index(row);
 	for(int i=0;i<row;i++) random_index[i] = i;
 	
@@ -3005,17 +3169,16 @@ void Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
 	random_shuffle ( random_index.begin(), random_index.end(), myrandom );
 	for(int i=0;i<random_index.size();i++) cout << random_index[i] << " ";
 	cout << endl;
-
+	*/
+	
 	PositionVec position_vec;
 	for(int i=0;i<row;i++)
 	{
 		simple_point<double> vertex;
 		vertex.x = input_mat.at<float>(i,0);
 		vertex.y = input_mat.at<float>(i,1);
-		//vertex.x = input_mat.at<float>(random_index[i],0);
-		//vertex.y = input_mat.at<float>(random_index[i],1);
 		position_vec.push_back(vertex);
-	}
+	}		
 
 	//cout << "position_vec size " << position_vec.size() << endl;
 
@@ -3038,7 +3201,7 @@ void Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
 	}
 
 	//cout << "i " << i << endl;
-	cout << endl << endl;
+	//cout << endl << endl;
 
 	c.clear();
 
@@ -3063,12 +3226,103 @@ void Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index)
 	}
 	catch (const bad_graph& e) {
 		cerr << "bad_graph: " << e.what() << endl;
-		return;
+		//return;
 	}
 
 	cout << "Number of points: " << num_vertices(g) << endl;
 	cout << "Number of edges: " << num_edges(g) << endl;
 	cout << "Length of Tour: " << len << endl;
+
+	return len;
+
+}
+
+double Preprocessing_Data::TSP_boost(Mat input_mat, Mat& sort_index, Mat& guess_index)
+{
+	//int five_minutes = histogram.rows;
+	int row = input_mat.rows;
+
+	typedef vector<simple_point<double> > PositionVec;
+	typedef adjacency_matrix<undirectedS, no_property,
+	property <edge_weight_t, double> > Graph;
+	typedef graph_traits<Graph>::vertex_descriptor Vertex;
+	typedef vector<Vertex> Container;
+	typedef property_map<Graph, edge_weight_t>::type WeightMap;
+	typedef property_map<Graph, vertex_index_t>::type VertexMap;
+
+	/*
+	vector<int> random_index(row);
+	for(int i=0;i<row;i++) random_index[i] = i;
+	
+	srand ( unsigned ( time(0) ) );
+	random_shuffle ( random_index.begin(), random_index.end(), myrandom );
+	for(int i=0;i<random_index.size();i++) cout << random_index[i] << " ";
+	cout << endl;
+	*/
+	
+	PositionVec position_vec;
+	for(int i=0;i<row;i++)
+	{
+		simple_point<double> vertex;
+		vertex.x = input_mat.at<float>(guess_index.at<int>(i,0),0);
+		vertex.y = input_mat.at<float>(guess_index.at<int>(i,0),1);
+		position_vec.push_back(vertex);
+	}		
+
+	//cout << "position_vec size " << position_vec.size() << endl;
+
+	Container c;
+	Graph g(position_vec.size());
+	WeightMap weight_map(get(edge_weight, g));
+	VertexMap v_map = get(vertex_index, g);
+
+	connectAllEuclidean(g, position_vec, weight_map, v_map);
+
+	metric_tsp_approx_tour(g, back_inserter(c));
+
+	int i = 0;
+	for (vector<Vertex>::iterator itr = c.begin(); itr != c.end(); ++itr)
+	{
+		cout << *itr << " ";
+		sort_index.at<int>(i,0) = *itr;
+		i++;
+		if(i==row) break;
+	}
+
+	//cout << "i " << i << endl;
+	//cout << endl << endl;
+
+	c.clear();
+
+	//checkAdjList(position_vec);
+
+	//metric_tsp_approx_from_vertex(g, *vertices(g).first,
+	//	get(edge_weight, g), get(vertex_index, g),
+	//	tsp_tour_visitor<back_insert_iterator<vector<Vertex> > >
+	//	(back_inserter(c)));
+
+	//for (vector<Vertex>::iterator itr = c.begin(); itr != c.end(); ++itr)
+	//{
+	//	cout << *itr << " ";
+	//}
+	//cout << endl << endl;
+
+	//c.clear();
+   
+	double len(0.0);
+	try {
+		metric_tsp_approx(g, make_tsp_tour_len_visitor(g, back_inserter(c), len, weight_map));
+	}
+	catch (const bad_graph& e) {
+		cerr << "bad_graph: " << e.what() << endl;
+		//return;
+	}
+
+	cout << "Number of points: " << num_vertices(g) << endl;
+	cout << "Number of edges: " << num_edges(g) << endl;
+	cout << "Length of Tour: " << len << endl;
+
+	return len;
 
 }
 
@@ -3090,7 +3344,420 @@ void Preprocessing_Data::TSP_boost_for_histogram(Mat cluster_center, Mat& histo_
 	reduceDimPCA(Ev, rDim, component, coeff);
 	Mat Ev_PCA2D = coeff * component;
 
-	TSP_boost(Ev_PCA2D, histo_sort_index);
+	double min_tour_len = 1000;
+	Mat histo_sort_index_copy = histo_sort_index.clone();
+	Mat guess_index = Mat::zeros(five_minutes,1,CV_32S);
+	for(int i=0;i<five_minutes;i++)
+		guess_index.at<int>(i,0) = i;
+	//////////////////////////////////////////
+	vector<int> random_index(five_minutes);
+	for(int i=0;i<five_minutes;i++) random_index[i] = i;
+	
+	for(int i=0;i<20;i++)
+	{
+		double tour_len = TSP_boost(Ev_PCA2D, histo_sort_index_copy,guess_index);
+		//guess_index = histo_sort_index_copy.clone();
+		srand ( unsigned ( time(0) ) );
+		random_shuffle ( random_index.begin(), random_index.end(), myrandom );
+		for(int i=0;i<five_minutes;i++) guess_index.at<int>(i,0) = random_index[i];
+		//histo_sort_index = histo_sort_index_copy.clone();
+		if(tour_len <= min_tour_len)
+		{
+			min_tour_len = tour_len;
+			histo_sort_index = histo_sort_index_copy.clone();
+		}
+	}
+	cout << "min_tour_len " << min_tour_len << endl;
+	
+}
+
+void Preprocessing_Data::TSP_boost_for_histogram_coarse_to_fine(Mat cluster_center, Mat& histo_sort_index)
+{
+	int k = cluster_center.rows;
+	int five_minutes = histogram.rows; //k琌?计
+	int dim = histogram.rows;
+	int base;
+	//for(int i=3;i<50;i++)
+	//{
+	//	if(five_minutes%i==0)
+	//	{
+	//		base = i;
+	//		break;
+	//	}
+	//}
+	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_minutes;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_center.row(j);
+		}
+	}
+
+	int group_num = 4;
+	//int group_num = five_minutes/base;
+	Mat cluster_tag = Mat::zeros(five_minutes,1,CV_32S);
+	Mat cluster_centers = Mat::zeros(group_num,dim,CV_32F);
+	cuda_kmeans(Ev, group_num, cluster_tag, cluster_centers);
+	class group{
+	public:
+		vector<int> index;
+	};
+	vector<group> groups(group_num);
+
+	for(int i=0;i<five_minutes;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		groups[tag].index.push_back(i);
+	}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(Ev, rDim, component, coeff);
+	Mat Ev_PCA2D = coeff * component;
+
+	int t = 0;
+	for(int i=0;i<group_num;i++)
+	{
+		Mat Ev_PCA2D_sub = Mat::zeros(groups[i].index.size(),2,CV_32F);
+		Mat histo_sort_index_sub = Mat::zeros(groups[i].index.size(),1,CV_32S);
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = groups[i].index[j];
+			Ev_PCA2D_sub.at<float>(j,0) = Ev_PCA2D.at<float>(index,0);	
+			Ev_PCA2D_sub.at<float>(j,1) = Ev_PCA2D.at<float>(index,1);	
+		}
+		TSP_boost(Ev_PCA2D_sub, histo_sort_index_sub);
+		//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = histo_sort_index_sub.at<int>(j,0);
+			histo_sort_index.at<int>(t,0) = groups[i].index[index];
+			t++;
+		}
+	}
+
+}
+
+void Preprocessing_Data::TSP_boost_for_histogram_coarse_to_fine2(Mat cluster_center, Mat& histo_sort_index)
+{
+	int k = cluster_center.rows;
+	int five_minutes = histogram.rows; //k琌?计
+	int dim = histogram.rows;
+	
+	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_minutes;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_center.row(j);
+		}
+	}
+	int group_num = 4;
+	Mat cluster_tag = Mat::zeros(five_minutes,1,CV_32S);
+	Mat cluster_centers = Mat::zeros(group_num,dim,CV_32F);
+	cuda_kmeans(Ev, group_num, cluster_tag, cluster_centers);
+	//kmeans(Ev, group_num, cluster_tag, TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), 2,KMEANS_PP_CENTERS,cluster_centers);
+	class group{
+	public:
+		vector<int> index;
+		vector<int> sort_index;
+		vector<int> adj_index;
+	};
+	vector<group> groups(group_num);
+
+	for(int i=0;i<five_minutes;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		groups[tag].index.push_back(i);
+	}
+
+ //	for(int i=0;i<group_num;i++)
+	//{
+	//	for(int j=0;j<groups[i].index.size();j++)
+	//	{
+	//		cout << groups[i].index[j] << " ";
+	//	}
+	//	cout << endl;
+	//}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(Ev, rDim, component, coeff);
+	Mat Ev_PCA2D = coeff * component;
+
+	//int t = 0;
+	for(int i=0;i<group_num;i++)
+	{
+		Mat Ev_PCA2D_sub = Mat::zeros(groups[i].index.size(),2,CV_32F);
+		Mat histo_sort_index_sub = Mat::zeros(groups[i].index.size(),1,CV_32S);
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = groups[i].index[j];
+			Ev_PCA2D_sub.at<float>(j,0) = Ev_PCA2D.at<float>(index,0);	
+			Ev_PCA2D_sub.at<float>(j,1) = Ev_PCA2D.at<float>(index,1);	
+		}
+		TSP_boost(Ev_PCA2D_sub, histo_sort_index_sub);
+		//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = histo_sort_index_sub.at<int>(j,0);
+			groups[i].sort_index.push_back(groups[i].index[index]);
+			//lab_color_sort_index.at<int>(t,0) = groups[i].index[index];
+			//t++;
+		}
+	}
+
+	cout << "sort index: " << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].sort_index.size();j++)
+		{
+			if(i==0)
+			{
+				groups[i].adj_index.push_back(groups[i].sort_index[j]);
+			}
+			cout << groups[i].sort_index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	for(int s=1;s<group_num;s++)
+	{
+		bool flag = false;
+		for(int i=0;i<groups[s].sort_index.size();i++)
+		{
+			Mat Ev_PCA2D_sub = Mat::zeros(groups[s-1].sort_index.size()+1,2,CV_32F);
+			Mat histo_sort_index_sub = Mat::zeros(groups[s-1].sort_index.size()+1,1,CV_32S);
+			for(int j=0;j<groups[s-1].sort_index.size();j++)
+			{
+				int index = groups[s-1].sort_index[j];
+				Ev_PCA2D_sub.at<float>(j,0) = Ev_PCA2D.at<float>(index,0);	
+				Ev_PCA2D_sub.at<float>(j,1) = Ev_PCA2D.at<float>(index,1);	
+			}
+			int try_index = groups[s].sort_index[i];
+			Ev_PCA2D_sub.at<float>(groups[s-1].sort_index.size(),0) = Ev_PCA2D.at<float>(try_index,0);
+			TSP_boost(Ev_PCA2D_sub, histo_sort_index_sub);
+			//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		
+			if( histo_sort_index_sub.at<int>(groups[s-1].sort_index.size(),0) == groups[s-1].sort_index.size() )
+			{
+				flag = true;
+				for(int t=i;t<groups[s].sort_index.size();t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+			
+				for(int t=0;t<i;t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+				break;
+			}
+		}
+		if(flag==false)
+		{
+			for(int t=0;t<groups[s].sort_index.size();t++)
+			{
+				groups[s].adj_index.push_back( groups[s].sort_index[t] );
+				//cout << groups[s].sort_index[t] << " ";
+			}
+		}
+		//cout << endl;
+	}
+
+	cout << "adj index: " << endl;
+	int t = 0;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].adj_index.size();j++)
+		{
+			cout << groups[i].adj_index[j] << " ";
+			histo_sort_index.at<int>(t,0) = groups[i].adj_index[j];
+			t++;
+		}
+		cout << endl;
+	}
+
+}
+
+void Preprocessing_Data::TSP_boost_for_histogram_coarse_to_fine3(Mat cluster_center, Mat& histo_sort_index)
+{
+	int k = cluster_center.rows;
+	int five_minutes = histogram.rows; //k琌?计
+	int dim = histogram.rows;
+	
+	Mat Ev = Mat::zeros(five_minutes,cluster_center.cols,CV_32F);
+	for(int i=0;i<five_minutes;i++)
+	{
+		for(int j=0;j<k;j++)
+		{
+			Ev.row(i) += (histogram.at<int>(i,j)/600.0)*cluster_center.row(j);
+		}
+	}
+	int group_num = 5;
+	Mat cluster_tag = Mat::zeros(five_minutes,1,CV_32S);
+	Mat group_cluster_centers = Mat::zeros(group_num,dim,CV_32F);
+	cuda_kmeans(Ev, group_num, cluster_tag, group_cluster_centers);
+	//kmeans(Ev, group_num, cluster_tag, TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), 2,KMEANS_PP_CENTERS,cluster_centers);
+	class group{
+	public:
+		vector<int> index;
+		vector<int> index2;
+		vector<int> sort_index;
+		vector<int> adj_index;
+	};
+	vector<group> groups(group_num);
+
+	for(int i=0;i<five_minutes;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		groups[tag].index.push_back(i);
+	}
+
+
+	cout << "index " << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			cout << groups[i].index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(group_cluster_centers, rDim, component, coeff);
+	Mat group_cluster_center2D_ndim = coeff * component;
+	Mat group_cluster_center2D = Mat::zeros(group_num,2,CV_32F);
+	for(int i=0;i<rDim;i++)
+	{
+		group_cluster_center2D_ndim.col(i).copyTo( group_cluster_center2D.col(i) );
+	}
+	Mat group_sort_index = Mat::zeros(group_num,1,CV_32S);
+	TSP_boost(group_cluster_center2D, group_sort_index);
+
+	for(int i=0;i<group_num;i++)
+	{
+		int index = group_sort_index.at<int>(i,0);
+		for(int j=0;j<groups[index].index.size();j++)
+		{
+			groups[i].index2.push_back( groups[index].index[j] );
+		}
+	}
+
+	cout << "index2 :" << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].index2.size();j++)
+		{
+			cout << groups[i].index2[j] << " ";
+		}
+		cout << endl;
+	}
+
+	//Mat component, coeff;
+	rDim = 2;
+	reduceDimPCA(Ev, rDim, component, coeff);
+	Mat Ev_PCA2D = coeff * component;
+
+	//int t = 0;
+	for(int i=0;i<group_num;i++)
+	{
+		Mat Ev_PCA2D_sub = Mat::zeros(groups[i].index.size(),2,CV_32F);
+		Mat histo_sort_index_sub = Mat::zeros(groups[i].index.size(),1,CV_32S);
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = groups[i].index[j];
+			Ev_PCA2D_sub.at<float>(j,0) = Ev_PCA2D.at<float>(index,0);	
+			Ev_PCA2D_sub.at<float>(j,1) = Ev_PCA2D.at<float>(index,1);	
+		}
+		TSP_boost(Ev_PCA2D_sub, histo_sort_index_sub);
+		//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = histo_sort_index_sub.at<int>(j,0);
+			groups[i].sort_index.push_back(groups[i].index[index]);
+			//lab_color_sort_index.at<int>(t,0) = groups[i].index[index];
+			//t++;
+		}
+	}
+
+	cout << "sort index: " << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].sort_index.size();j++)
+		{
+			if(i==0)
+			{
+				groups[i].adj_index.push_back(groups[i].sort_index[j]);
+			}
+			cout << groups[i].sort_index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	for(int s=1;s<group_num;s++)
+	{
+		bool flag = false;
+		for(int i=0;i<groups[s].sort_index.size();i++)
+		{
+			Mat Ev_PCA2D_sub = Mat::zeros(groups[s-1].sort_index.size()+1,2,CV_32F);
+			Mat histo_sort_index_sub = Mat::zeros(groups[s-1].sort_index.size()+1,1,CV_32S);
+			for(int j=0;j<groups[s-1].sort_index.size();j++)
+			{
+				int index = groups[s-1].sort_index[j];
+				Ev_PCA2D_sub.at<float>(j,0) = Ev_PCA2D.at<float>(index,0);	
+				Ev_PCA2D_sub.at<float>(j,1) = Ev_PCA2D.at<float>(index,1);	
+			}
+			int try_index = groups[s].sort_index[i];
+			Ev_PCA2D_sub.at<float>(groups[s-1].sort_index.size(),0) = Ev_PCA2D.at<float>(try_index,0);
+			TSP_boost(Ev_PCA2D_sub, histo_sort_index_sub);
+			//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		
+			if( histo_sort_index_sub.at<int>(groups[s-1].sort_index.size(),0) == groups[s-1].sort_index.size() )
+			{
+				flag = true;
+				for(int t=i;t<groups[s].sort_index.size();t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+			
+				for(int t=0;t<i;t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+				break;
+			}
+		}
+		if(flag==false)
+		{
+			for(int t=0;t<groups[s].sort_index.size();t++)
+			{
+				groups[s].adj_index.push_back( groups[s].sort_index[t] );
+				//cout << groups[s].sort_index[t] << " ";
+			}
+		}
+		//cout << endl;
+	}
+
+	cout << "adj index: " << endl;
+	int t = 0;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].adj_index.size();j++)
+		{
+			cout << groups[i].adj_index[j] << " ";
+			histo_sort_index.at<int>(t,0) = groups[i].adj_index[j];
+			t++;
+		}
+		cout << endl;
+	}
 }
 
 void Preprocessing_Data::TSP_boost_for_lab_color(Mat cluster_center, Mat& lab_color_sort_index)
@@ -3103,6 +3770,370 @@ void Preprocessing_Data::TSP_boost_for_lab_color(Mat cluster_center, Mat& lab_co
 	Mat lab_PCA2D = coeff * component;
 
 	TSP_boost(lab_PCA2D, lab_color_sort_index);
+}
+
+void Preprocessing_Data::TSP_boost_for_lab_color_coarse_to_fine(Mat lab_data, Mat& lab_color_sort_index)
+{
+	int k = lab_data.rows;//k琌4计
+	int dim = lab_data.rows;
+	//int base = 4;
+	//int group_num = k/base;
+	int group_num = 3;
+	Mat cluster_tag = Mat::zeros(k,1,CV_32S);
+	Mat cluster_centers = Mat::zeros(group_num,dim,CV_32F);
+	//cuda_kmeans(lab_data, group_num, cluster_tag, cluster_centers);
+	kmeans(lab_data, group_num, cluster_tag, TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), 2,KMEANS_PP_CENTERS,cluster_centers);
+	class group{
+	public:
+		vector<int> index;
+	};
+	vector<group> groups(group_num);
+
+	for(int i=0;i<k;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		groups[tag].index.push_back(i);
+	}
+
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			cout << groups[i].index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(lab, rDim, component, coeff);
+	Mat lab_PCA2D = coeff * component;
+
+	int t = 0;
+	for(int i=0;i<group_num;i++)
+	{
+		Mat lab_PCA2D_sub = Mat::zeros(groups[i].index.size(),2,CV_32F);
+		Mat lab_color_sort_index_sub = Mat::zeros(groups[i].index.size(),1,CV_32S);
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = groups[i].index[j];
+			//lab_PCA2D.row(index).copyTo( lab_PCA2D_sub.row(j) );
+			lab_PCA2D_sub.at<float>(j,0) = lab_PCA2D.at<float>(index,0);	
+			lab_PCA2D_sub.at<float>(j,1) = lab_PCA2D.at<float>(index,1);	
+		}
+		TSP_boost(lab_PCA2D_sub, lab_color_sort_index_sub);
+		//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = lab_color_sort_index_sub.at<int>(j,0);
+			lab_color_sort_index.at<int>(t,0) = groups[i].index[index];
+			//cout << groups[i].index[index] << " ";
+			t++;
+		}
+		//cout << endl;
+	}
+}
+
+void Preprocessing_Data::TSP_boost_for_lab_color_coarse_to_fine2(Mat lab_data, Mat& lab_color_sort_index)
+{
+	int k = lab_data.rows;//k琌4计
+	int dim = lab_data.rows;
+	int group_num = 3;
+	Mat cluster_tag = Mat::zeros(k,1,CV_32S);
+	Mat cluster_centers = Mat::zeros(group_num,dim,CV_32F);
+	//cuda_kmeans(lab_data, group_num, cluster_tag, cluster_centers);
+	kmeans(lab_data, group_num, cluster_tag, TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), 2,KMEANS_PP_CENTERS,cluster_centers);
+	class group{
+	public:
+		vector<int> index;
+		vector<int> sort_index;
+		vector<int> adj_index;
+	};
+	vector<group> groups(group_num);
+
+	for(int i=0;i<k;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		groups[tag].index.push_back(i);
+	}
+
+ //	for(int i=0;i<group_num;i++)
+	//{
+	//	for(int j=0;j<groups[i].index.size();j++)
+	//	{
+	//		cout << groups[i].index[j] << " ";
+	//	}
+	//	cout << endl;
+	//}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(lab, rDim, component, coeff);
+	Mat lab_PCA2D = coeff * component;
+
+	//int t = 0;
+	for(int i=0;i<group_num;i++)
+	{
+		Mat lab_PCA2D_sub = Mat::zeros(groups[i].index.size(),2,CV_32F);
+		Mat lab_color_sort_index_sub = Mat::zeros(groups[i].index.size(),1,CV_32S);
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = groups[i].index[j];
+			lab_PCA2D_sub.at<float>(j,0) = lab_PCA2D.at<float>(index,0);	
+			lab_PCA2D_sub.at<float>(j,1) = lab_PCA2D.at<float>(index,1);	
+		}
+		TSP_boost(lab_PCA2D_sub, lab_color_sort_index_sub);
+		//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			int index = lab_color_sort_index_sub.at<int>(j,0);
+			groups[i].sort_index.push_back(groups[i].index[index]);
+			//lab_color_sort_index.at<int>(t,0) = groups[i].index[index];
+			//t++;
+		}
+	}
+
+	cout << "sort index: " << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].sort_index.size();j++)
+		{
+			if(i==0)
+			{
+				groups[i].adj_index.push_back(groups[i].sort_index[j]);
+			}
+			cout << groups[i].sort_index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	for(int s=1;s<group_num;s++)
+	{
+		bool flag = false;
+		for(int i=0;i<groups[s].sort_index.size();i++)
+		{
+			Mat lab_PCA2D_sub = Mat::zeros(groups[s-1].sort_index.size()+1,2,CV_32F);
+			Mat lab_color_sort_index_sub = Mat::zeros(groups[s-1].sort_index.size()+1,1,CV_32S);
+			for(int j=0;j<groups[s-1].sort_index.size();j++)
+			{
+				int index = groups[s-1].sort_index[j];
+				lab_PCA2D_sub.at<float>(j,0) = lab_PCA2D.at<float>(index,0);	
+				lab_PCA2D_sub.at<float>(j,1) = lab_PCA2D.at<float>(index,1);	
+			}
+			int try_index = groups[s].sort_index[i];
+			lab_PCA2D_sub.at<float>(groups[s-1].sort_index.size(),0) = lab_PCA2D.at<float>(try_index,0);
+			TSP_boost(lab_PCA2D_sub, lab_color_sort_index_sub);
+			//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		
+			if( lab_color_sort_index_sub.at<int>(groups[s-1].sort_index.size(),0) == groups[s-1].sort_index.size() )
+			{
+				flag = true;
+				for(int t=i;t<groups[s].sort_index.size();t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+			
+				for(int t=0;t<i;t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+				break;
+			}
+		}
+		if(flag==false)
+		{
+			for(int t=0;t<groups[s].sort_index.size();t++)
+			{
+				groups[s].adj_index.push_back( groups[s].sort_index[t] );
+				//cout << groups[s].sort_index[t] << " ";
+			}
+		}
+		//cout << endl;
+	}
+
+	cout << "adj index: " << endl;
+	int t = 0;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].adj_index.size();j++)
+		{
+			cout << groups[i].adj_index[j] << " ";
+			lab_color_sort_index.at<int>(t,0) = groups[i].adj_index[j];
+			t++;
+		}
+		cout << endl;
+	}
+
+}
+
+void Preprocessing_Data::TSP_boost_for_lab_color_coarse_to_fine3(Mat lab_data, Mat& lab_color_sort_index)
+{
+	int k = lab_data.rows;//k琌4计
+	int dim = lab_data.rows;
+	int group_num = 5;
+	Mat cluster_tag = Mat::zeros(k,1,CV_32S);
+	Mat cluster_centers = Mat::zeros(group_num,dim,CV_32F);
+	//cuda_kmeans(lab_data, group_num, cluster_tag, cluster_centers);
+	kmeans(lab_data, group_num, cluster_tag, TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100, 0.0001), 2, KMEANS_PP_CENTERS,cluster_centers);
+	class group{
+	public:
+		vector<int> index;
+		vector<int> index2;
+		vector<int> sort_index;
+		vector<int> adj_index;
+	};
+	vector<group> groups(group_num);
+
+	for(int i=0;i<k;i++)
+	{
+		int tag = cluster_tag.at<int>(i,0);
+		groups[tag].index.push_back(i);
+	}
+
+	cout << "index :" << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].index.size();j++)
+		{
+			cout << groups[i].index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	Mat component, coeff;
+	int rDim = 2;
+	reduceDimPCA(cluster_centers, rDim, component, coeff);
+	Mat lab_cluster_center2D_ndim = coeff * component;
+	Mat lab_cluster_center2D = Mat::zeros(group_num,2,CV_32F);
+	for(int i=0;i<rDim;i++)
+	{
+		lab_cluster_center2D_ndim.col(i).copyTo( lab_cluster_center2D.col(i) );
+	}
+	Mat color_sort_index = Mat::zeros(group_num,1,CV_32S);
+	TSP_boost(lab_cluster_center2D, color_sort_index);
+
+	for(int i=0;i<group_num;i++)
+	{
+		int index = color_sort_index.at<int>(i,0);
+		for(int j=0;j<groups[index].index.size();j++)
+		{
+			groups[i].index2.push_back( groups[index].index[j] );
+		}
+	}
+
+	cout << "index2 :" << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].index2.size();j++)
+		{
+			cout << groups[i].index2[j] << " ";
+		}
+		cout << endl;
+	}
+
+	//Mat component, coeff;
+	rDim = 2;
+	reduceDimPCA(lab, rDim, component, coeff);
+	Mat lab_PCA2D = coeff * component;
+
+	//int t = 0;
+	for(int i=0;i<group_num;i++)
+	{
+		Mat lab_PCA2D_sub = Mat::zeros(groups[i].index2.size(),2,CV_32F);
+		Mat lab_color_sort_index_sub = Mat::zeros(groups[i].index2.size(),1,CV_32S);
+		for(int j=0;j<groups[i].index2.size();j++)
+		{
+			int index = groups[i].index2[j];
+			lab_PCA2D_sub.at<float>(j,0) = lab_PCA2D.at<float>(index,0);	
+			lab_PCA2D_sub.at<float>(j,1) = lab_PCA2D.at<float>(index,1);	
+		}
+		TSP_boost(lab_PCA2D_sub, lab_color_sort_index_sub);
+		//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		for(int j=0;j<groups[i].index2.size();j++)
+		{
+			int index = lab_color_sort_index_sub.at<int>(j,0);
+			groups[i].sort_index.push_back(groups[i].index2[index]);
+			//lab_color_sort_index.at<int>(t,0) = groups[i].index2[index];
+			//t++;
+		}
+	}
+
+	cout << "sort index: " << endl;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].sort_index.size();j++)
+		{
+			if(i==0)
+			{
+				groups[i].adj_index.push_back(groups[i].sort_index[j]);
+			}
+			cout << groups[i].sort_index[j] << " ";
+		}
+		cout << endl;
+	}
+
+	for(int s=1;s<group_num;s++)
+	{
+		bool flag = false;
+		for(int i=0;i<groups[s].sort_index.size();i++)
+		{
+			Mat lab_PCA2D_sub = Mat::zeros(groups[s-1].sort_index.size()+1,2,CV_32F);
+			Mat lab_color_sort_index_sub = Mat::zeros(groups[s-1].sort_index.size()+1,1,CV_32S);
+			for(int j=0;j<groups[s-1].sort_index.size();j++)
+			{
+				int index = groups[s-1].sort_index[j];
+				lab_PCA2D_sub.at<float>(j,0) = lab_PCA2D.at<float>(index,0);	
+				lab_PCA2D_sub.at<float>(j,1) = lab_PCA2D.at<float>(index,1);	
+			}
+			int try_index = groups[s].sort_index[i];
+			lab_PCA2D_sub.at<float>(groups[s-1].sort_index.size(),0) = lab_PCA2D.at<float>(try_index,0);
+			TSP_boost(lab_PCA2D_sub, lab_color_sort_index_sub);
+			//cout << "lab_color_sort_index_sub " << lab_color_sort_index_sub << endl;
+		
+			if( lab_color_sort_index_sub.at<int>(groups[s-1].sort_index.size(),0) == groups[s-1].sort_index.size() )
+			{
+				flag = true;
+				for(int t=i;t<groups[s].sort_index.size();t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+			
+				for(int t=0;t<i;t++)
+				{
+					groups[s].adj_index.push_back( groups[s].sort_index[t] );
+					//cout << groups[s].sort_index[t] << " ";
+				}
+				break;
+			}
+		}
+		if(flag==false)
+		{
+			for(int t=0;t<groups[s].sort_index.size();t++)
+			{
+				groups[s].adj_index.push_back( groups[s].sort_index[t] );
+				//cout << groups[s].sort_index[t] << " ";
+			}
+		}
+		//cout << endl;
+	}
+
+	cout << "adj index: " << endl;
+	int t = 0;
+ 	for(int i=0;i<group_num;i++)
+	{
+		for(int j=0;j<groups[i].adj_index.size();j++)
+		{
+			cout << groups[i].adj_index[j] << " ";
+			lab_color_sort_index.at<int>(t,0) = groups[i].adj_index[j];
+			t++;
+		}
+		cout << endl;
+	}
+
+	groups.clear();
 }
 
 void Preprocessing_Data::TSP_for_lab_color(Mat cluster_center)

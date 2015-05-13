@@ -33,9 +33,9 @@ __device__ float Distance2(float* objects, float *clusters, int numPoint, int di
 
 texture<float, 1, cudaReadModeElementType> texRefX;
 //int main(int argc, char* argv[])
-void cuda_kmeans(int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
+void cuda_kmeans(cv::Mat input, int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
 {
-	char *path = "model.csv" ;
+	//char *path = "model.csv" ;
 	int dataPointSize;
 	int dataDimension;
 	float  *DataPoints;
@@ -50,15 +50,10 @@ void cuda_kmeans(int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
 	int iteration=0;
 	int GRID_DIM;  
 	int clusterNum = k; //
-	//if(argc >=2) 
-	//{
-	//	path = argv[1];
-	//	if(argc>2)
-	//		clusterNum = atoi(argv[2]);
-	//}
-	// pre-processing 
-	//cout << "loading file ..." << endl;
-	DataSizeRead(path,dataPointSize,dataDimension); // check right 
+
+	//DataSizeRead(path,dataPointSize,dataDimension); // check right 
+	dataPointSize = input.rows;
+	dataDimension = input.cols;
 	GRID_DIM =  dataPointSize/BLOCK_DIM + (dataPointSize % BLOCK_DIM == 0 ? 0 : 1); 
 	//GRID_DIM = dataPointSize % BLOCK_DIM ? dataPointSize/BLOCK_DIM +1: dataPointSize/BLOCK_DIM;  
 	//cout << "initializing data ..." << endl;
@@ -76,9 +71,17 @@ void cuda_kmeans(int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
 	
 	//cout <<" reading file ... " << endl;
 	//  file read ; 
-	FileRead(path,DataPoints,MinDistance,ClusterIndex);// checked; 
-	
-	
+	//FileRead(path,DataPoints,MinDistance,ClusterIndex);// checked; 
+	for(int i=0;i<dataPointSize;i++)
+	{
+		for(int j=0;j<dataDimension;j++)
+		{
+			DataPoints[i*dataDimension+j] = input.at<float>(i,j);
+		}
+		MinDistance[i] = FLT_MAX;
+		ClusterIndex[i] = -1;
+	}
+
 	float  *GPU_DataPoints;
 	float  *GPU_MinDistance;
 	int    *GPU_ClusterIndex;
@@ -149,8 +152,8 @@ void cuda_kmeans(int k, cv::Mat& cluster_index, cv::Mat& cluster_center)
 		cudaMemcpy(ClusterIndex,GPU_ClusterIndex,sizeof(int)*dataPointSize*1 ,cudaMemcpyDeviceToHost);
 	}
 	end = ms_time();
-	cout << "Total Iteration = " << iteration << endl;
-	cout << "Execution Time " << double(end-start)  << "ms"<<endl;
+	//cout << "Total Iteration = " << iteration << endl;
+	//cout << "Execution Time " << double(end-start)  << "ms"<<endl;
 	if(clusterNum <= 20)
 	{
 		printResult(DataPoints,ClusterIndex ,dataPointSize,clusterNum,dataDimension);
