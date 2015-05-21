@@ -17,7 +17,6 @@
 #include "glut.h"
 #include <FTGL/ftgl.h>
 
-//#include "Preprocessing_Data.h"
 
 //using namespace std; 
 //using namespace cv;

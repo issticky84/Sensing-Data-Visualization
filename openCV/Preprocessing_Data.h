@@ -11,8 +11,9 @@
 #include <string>
 #include "cv.h"
 #include "city_info.h"
+#include "tsp_brute.h"
 
-//////
+//////boost
 #include <boost/assert.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/random.hpp>
@@ -125,14 +126,20 @@ private:
 	void TSP_boost_for_lab_color_coarse_to_fine(Mat, Mat&);
 	void TSP_boost_for_lab_color_coarse_to_fine2(Mat, Mat&);
 	void TSP_boost_for_lab_color_coarse_to_fine3(Mat, Mat&);
+	void TSP_path_for_lab_color_coarse_to_fine(Mat, Mat&);
+	void TSP_path_for_lab_color_coarse_to_fine2(Mat, Mat&);
 	double TSP_boost(Mat, Mat&);
 	double TSP_boost(Mat, Mat&, Mat&);
-	void sort_by_color_by_TSP_boost(Mat, Mat&, Mat&, Mat&);
+	double TSP_path(Mat, Mat&);
+	void sort_by_color_by_TSP(Mat, Mat&, Mat&, Mat&);
 
 	double db_index(Mat, Mat, Mat);
 	double compute_dist(Mat,Mat,int);
 
 	int Find_Cluster_By_Elbow_Method(Mat);
+
+	double TSP_boost_by_EdgeWeight(Mat, Mat&);
+	double TSP_boost_by_EdgeWeight(Mat, Mat&, int, int);
 
 public:
 	Preprocessing_Data();
